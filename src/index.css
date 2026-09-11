@@ -1,0 +1,99 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* ============================================================
+   PinHTML 设计语言（spec R10 / D4 / D6）
+   纯白画布 · hairline 浅灰边框（#E8E8E4 系）· 黑主按钮 ·
+   抹茶绿单一点缀 · 系统字体栈 · 12px 圆角 · 低饱和阴影
+   ============================================================ */
+
+/* dark: 变体仅随 .dark 类生效（工具恒为浅色画布，避免随系统偏好误触发） */
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  /* shadcn 基础变量 —— 映射至 PinHTML 设计语言 */
+  --background: #ffffff; /* 纯白画布 */
+  --foreground: #141413; /* 近黑墨色 */
+  --card: #ffffff;
+  --card-foreground: #141413;
+  --popover: #ffffff;
+  --popover-foreground: #141413;
+
+  --primary: #141413; /* 黑主按钮（前景白） */
+  --primary-foreground: #ffffff;
+
+  --secondary: #f4f4f1; /* 暖调浅灰 */
+  --secondary-foreground: #141413;
+
+  --muted: #f4f4f1;
+  --muted-foreground: #71716b;
+
+  /* 抹茶绿点缀系（R10：--ring / --accent 系 = 抹茶绿） */
+  --accent: rgba(122, 155, 84, 0.1); /* = --matcha-wash */
+  --accent-foreground: #5e7a42; /* = --matcha-deep */
+
+  --destructive: #c0392b; /* 低饱和警示红 */
+  --destructive-foreground: #ffffff;
+
+  --border: #e8e8e4; /* hairline 浅灰 */
+  --input: #e8e8e4;
+  --ring: #7a9b54; /* 抹茶绿 focus 描边 */
+
+  --radius: 12px;
+
+  /* 抹茶绿色阶（D4） */
+  --matcha: #7a9b54;
+  --matcha-deep: #5e7a42;
+  --matcha-wash: rgba(122, 155, 84, 0.1);
+  --matcha-line: rgba(122, 155, 84, 0.65);
+}
+
+/* Tailwind 主题映射（CSS-first，Tailwind 4） */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* 抹茶绿色阶 → bg-matcha / text-matcha-deep / border-matcha-line 等工具类 */
+  --color-matcha: var(--matcha);
+  --color-matcha-deep: var(--matcha-deep);
+  --color-matcha-wash: var(--matcha-wash);
+  --color-matcha-line: var(--matcha-line);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* 系统字体栈（R10：不引入 webfont，产物零外链） */
+@theme {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC",
+    "Helvetica Neue", Arial, sans-serif;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+}
