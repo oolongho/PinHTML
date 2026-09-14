@@ -8,6 +8,7 @@
  *   （保留 data-anno-id）得干净源，进入续编；
  * - buildSrcdoc：干净源 + bridge 脚本组装 iframe srcdoc。
  */
+import { normalizeProtoName } from './naming';
 import type { Project } from './types';
 
 /** loadPrototypeFile 的返回 */
@@ -107,19 +108,23 @@ export function createEmptyProject(protoName: string, protoHash: string): Projec
 /**
  * 读取原型文件并完成加载流水线（R1「加载原型」）：
  * 读文本 → stripInjections → 对干净源计算 protoHash；
- * 若为本工具导出产物且含标注（anchors / annotations 非空）→ 恢复项目进入续编
- * （protoName / protoHash 同步为当前文件与当前干净源），否则建空项目（protoName = 文件名）。
+ * 若为本工具导出产物 → 恢复其项目、并**沿用文件内记录的原始原型名**（归一化后），
+ * 使重复「打开导出产物 → 再导出」时文件名不再累积「-标注」后缀；
+ * 标注非空进入续编，否则建空项目。
  */
 export async function loadPrototypeFile(file: File): Promise<LoadPrototypeResult> {
   const text = await file.text();
   const { cleanSource, project: savedProject } = stripInjections(text);
   const protoHash = await computeProtoHash(cleanSource);
-  const restored =
-    savedProject !== null && (savedProject.anchors.length > 0 || savedProject.annotations.length > 0);
-  const project: Project = restored && savedProject !== null
-    ? { ...savedProject, protoName: file.name, protoHash }
-    : createEmptyProject(file.name, protoHash);
-  return { cleanSource, project, protoHash, restored };
+  const changed = (p: Project): boolean => p.anchors.length > 0 || p.annotations.length > 0;
+  // 本工具导出产物：沿用其内部记录的原始原型名（而非当前文件名）；否则用所打开的当前文件名
+  const sourceName = savedProject?.protoName ? savedProject.protoName : file.name;
+  const protoName = normalizeProtoName(sourceName);
+  const project: Project =
+    savedProject !== null && changed(savedProject)
+      ? { ...savedProject, protoName, protoHash }
+      : createEmptyProject(protoName, protoHash);
+  return { cleanSource, project, protoHash, restored: savedProject !== null && changed(savedProject) };
 }
 
 /**

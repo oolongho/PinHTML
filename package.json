@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build && mv dist/index.html dist/PinHTML.html",
     "typecheck": "tsc -b",
+    "test": "vitest run",
     "lint": "oxlint",
+    "check": "npm run typecheck && npm run lint && npm run test && npm run build",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -31,9 +33,11 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^5.2.0",
+    "happy-dom": "^20.14.3",
     "oxlint": "^1.79.0",
     "typescript": "~6.0.2",
     "vite": "^7.3.6",
-    "vite-plugin-singlefile": "^2.3.3"
+    "vite-plugin-singlefile": "^2.3.3",
+    "vitest": "^5.0.0"
   }
 }

@@ -44,9 +44,26 @@ export function EditorForm({
   const [color, setColor] = useState<Category>(initialColor);
   const project = usePinHTMLStore((s) => s.project);
 
+  const submit = (): void => {
+    if (!title.trim()) return;
+    onSave({ title: title.trim(), body, color });
+  };
+
   return (
-    <div className="space-y-2 rounded-xl border border-matcha-line bg-background p-3 shadow-sm">
-      <div className="text-xs font-semibold text-muted-foreground">{heading}</div>
+    <div
+      className="space-y-2 rounded-xl border border-matcha-line bg-background p-3 shadow-sm"
+      onKeyDown={(e) => {
+        // ⌘/Ctrl + Enter 保存（Esc 取消由全局快捷键处理）
+        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+          e.preventDefault();
+          submit();
+        }
+      }}
+    >
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-muted-foreground">{heading}</span>
+        <span className="text-[10px] text-muted-foreground">⌘↵ 保存 · Esc 取消</span>
+      </div>
 
       <Input
         value={title}
@@ -96,7 +113,7 @@ export function EditorForm({
           type="button"
           size="sm"
           disabled={!title.trim()}
-          onClick={() => onSave({ title: title.trim(), body, color })}
+          onClick={submit}
         >
           保存
         </Button>

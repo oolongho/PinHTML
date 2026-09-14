@@ -13,6 +13,9 @@ import type { Mode } from './types';
 /** 通信契约版本（bridge.version 应与之相等，供握手校验 / 调试） */
 export const TRANSPORT_VERSION = '1';
 
+/** 从原型 iframe 内转发的快捷键语义 */
+export type ShortcutKey = 'escape' | 'save' | 'export';
+
 /** bridge.init(config) 的配置：父页注册到 iframe 内的回调 */
 export interface BridgeConfig {
   /**
@@ -22,13 +25,16 @@ export interface BridgeConfig {
   onPick: (element: Element) => void;
   /** 结构变化回调：bridge 的 MutationObserver（childList + subtree + attributes）合并转发，父页据此触发 rAF 重算 */
   onStructureChange: () => void;
+  /** 层级键回调：`[` → 'up'（放宽到父元素）/ `]` → 'down'（收窄回子元素） */
+  onLayerKey?: (dir: 'up' | 'down') => void;
+  /** 文件拖入回调：拖拽负载含文件时触发（用于「窗口任意位置拖入」） */
+  onFileDrop?: (files: FileList) => void;
+  /** 文件拖拽状态（进入/离开原型文档），父页据此显示落点提示 */
+  onFileDragState?: (active: boolean) => void;
+  /** 快捷键转发（原型内按下 Esc / ⌘S / ⌘E 时通知父页执行保存/导出/取消编辑） */
+  onShortcut?: (key: ShortcutKey) => void;
   /** bridge.destroy() 执行后的通知（可选，预留） */
   onDestroyed?: () => void;
-  /**
-   * 层级键回调（可选）：按 `[`（放宽一层，向父元素，'up'）或 `]`（收窄一层，回到子元素，'down'）时通知父页。
-   * 父页编辑器打开时据此改绑锚点父元素 / 撤回上次上移；bridge 自身的 hover 路径调整照常进行，两者互不冲突。
-   */
-  onLayerKey?: (dir: 'up' | 'down') => void;
 }
 
 /**
@@ -92,6 +98,12 @@ export interface Transport {
   onStructureChange(cb: () => void): void;
   /** 注册层级键回调（可选；重复调用以最后一次注册为准；不注册则 bridge 侧按键仅调整自身 hover 路径） */
   onLayerKey?(cb: (dir: 'up' | 'down') => void): void;
+  /** 注册文件拖入回调（支持把 HTML/JSON 拖到原型区域，实现「窗口任意位置拖入」） */
+  onFileDrop(cb: (files: FileList) => void): void;
+  /** 注册文件拖拽状态回调（用于显示落点提示） */
+  onFileDragState(cb: (active: boolean) => void): void;
+  /** 注册快捷键转发回调（原型内按下 Esc / ⌘S / ⌘E） */
+  onShortcut(cb: (key: ShortcutKey) => void): void;
   /** 滚动 data-anno-id = anchorId 的元素到 iframe 视口中央 */
   locate(anchorId: string): void;
 }
@@ -99,7 +111,7 @@ export interface Transport {
 /**
  * 直连 transport（D1）：经 iframe.contentWindow.PinHTMLBridge 调用，不做 postMessage。
  * bridge 未就绪（脚本未执行 / 挂载失败）返回 null，调用方可在 iframe load 后重试。
- * init 只在创建时调用一次；onPick / onStructureChange / onLayerKey 仅更新闭包中的回调引用。
+ * init 只在创建时调用一次；各 onXxx 仅更新闭包中的回调引用。
  */
 export function createDirectTransport(iframe: HTMLIFrameElement): Transport | null {
   const bridge = iframe.contentWindow?.PinHTMLBridge;
@@ -107,6 +119,9 @@ export function createDirectTransport(iframe: HTMLIFrameElement): Transport | nu
   let pickCb: ((el: Element) => void) | null = null;
   let structureCb: (() => void) | null = null;
   let layerKeyCb: ((dir: 'up' | 'down') => void) | null = null;
+  let fileDropCb: ((files: FileList) => void) | null = null;
+  let fileDragStateCb: ((active: boolean) => void) | null = null;
+  let shortcutCb: ((key: ShortcutKey) => void) | null = null;
   bridge.init({
     onPick: (el) => {
       if (pickCb) pickCb(el);
@@ -116,6 +131,15 @@ export function createDirectTransport(iframe: HTMLIFrameElement): Transport | nu
     },
     onLayerKey: (dir) => {
       if (layerKeyCb) layerKeyCb(dir);
+    },
+    onFileDrop: (files) => {
+      if (fileDropCb) fileDropCb(files);
+    },
+    onFileDragState: (active) => {
+      if (fileDragStateCb) fileDragStateCb(active);
+    },
+    onShortcut: (key) => {
+      if (shortcutCb) shortcutCb(key);
     },
   });
   return {
@@ -129,6 +153,15 @@ export function createDirectTransport(iframe: HTMLIFrameElement): Transport | nu
     },
     onLayerKey: (cb) => {
       layerKeyCb = cb;
+    },
+    onFileDrop: (cb) => {
+      fileDropCb = cb;
+    },
+    onFileDragState: (cb) => {
+      fileDragStateCb = cb;
+    },
+    onShortcut: (cb) => {
+      shortcutCb = cb;
     },
     locate: (anchorId) => bridge.locate(anchorId),
   };

@@ -6,6 +6,7 @@
  * 承载编辑态表单（新建 / 编辑既有）；监听 viewer 的可见性变化事件驱动「不可见」角标。
  */
 import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import { usePinHTMLStore, filterAnnotations } from '@/lib/store';
 import { numberAnnotations, orderAnnotations } from '@/lib/dom';
 import { getTargetDoc, getViewerInstance } from '@/viewer/registry';
@@ -35,6 +36,7 @@ export function AnnoList() {
   const editing = usePinHTMLStore((s) => s.editing);
   const staleAnchorIds = usePinHTMLStore((s) => s.staleAnchorIds);
   const structureVersion = usePinHTMLStore((s) => s.structureVersion);
+  const query = usePinHTMLStore((s) => s.query);
   const { moveUp, startRebind } = useAnnotationActions();
 
   const [hiddenMap, setHiddenMap] = useState<Record<string, boolean>>({});
@@ -55,7 +57,7 @@ export function AnnoList() {
   // 且标注量级很小（<100），每次渲染重算成本可忽略。
   // structureVersion 订阅用于在原型 DOM 结构变化时触发本组件重渲染（下方以 data 属性落地）。
   const targetDoc = getTargetDoc() ?? document;
-  const rows: AnnoRow[] = project
+  const passFilters: AnnoRow[] = project
     ? (() => {
         const numbers = numberAnnotations(project.annotations, targetDoc);
         const visibleIds = new Set(filterAnnotations(project, filters).map((a) => a.id));
@@ -64,6 +66,14 @@ export function AnnoList() {
           .map((anno) => ({ anno, no: numbers.get(anno.id) ?? 0 }));
       })()
     : [];
+  // 关键词搜索（标题 / 正文，大小写不敏感）
+  const keyword = query.trim().toLowerCase();
+  const rows = keyword
+    ? passFilters.filter(
+        ({ anno }) =>
+          anno.title.toLowerCase().includes(keyword) || anno.body.toLowerCase().includes(keyword),
+      )
+    : passFilters;
   const total = project?.annotations.length ?? 0;
 
   const locate = (anno: Annotation): void => {
@@ -92,7 +102,11 @@ export function AnnoList() {
       )}
       {project && rows.length === 0 && !editing && (
         <div className="px-2 py-8 text-center text-xs text-muted-foreground">
-          {total > 0 ? '当前筛选条件下没有标注' : '开启标注模式，点击原型任意元素'}
+          {total === 0
+            ? '开启标注模式，点击原型任意元素'
+            : passFilters.length === 0
+              ? '当前筛选条件下没有标注'
+              : '没有匹配的标注'}
         </div>
       )}
 
@@ -157,8 +171,20 @@ export function AnnoList() {
             <Button
               variant="destructive"
               onClick={() => {
-                if (pendingDeleteId) usePinHTMLStore.getState().removeAnnotation(pendingDeleteId);
+                const id = pendingDeleteId;
                 setPendingDeleteId(null);
+                if (!id) return;
+                // 删除前取快照：仅回插这一条标注即可撤销（锚点本就保留），不影响期间的其他改动
+                const removed = usePinHTMLStore.getState().project?.annotations.find((a) => a.id === id);
+                usePinHTMLStore.getState().removeAnnotation(id);
+                if (!removed) return;
+                toast('已删除标注', {
+                  description: removed.title,
+                  action: {
+                    label: '撤销',
+                    onClick: () => usePinHTMLStore.getState().restoreAnnotation(removed),
+                  },
+                });
               }}
             >
               删除

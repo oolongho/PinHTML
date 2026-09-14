@@ -50,9 +50,15 @@ export function resolveAnchor(doc: Document, anchor: Anchor): ResolvedAnchor {
   const bySelector = safeQueryAll(doc, anchor.selector).filter((el) => getSnippet(el) === anchor.snippet);
   if (bySelector.length === 1) return { state: 'moved', element: bySelector[0] };
 
-  // selector 无果 → 全文档 snippet 唯一匹配（唯一 = 无歧义，可安全重绑）
-  const bySnippet = Array.from(doc.querySelectorAll('*')).filter((el) => getSnippet(el) === anchor.snippet);
-  if (bySnippet.length === 1) return { state: 'moved', element: bySnippet[0] };
+  // selector 无果 → 全文档 snippet 匹配，取「最内层」唯一者
+  // （必须排除 body / html 这类祖先：其 textContent 与后代相同，否则永远 >1 匹配而误判失联）
+  const bySnippet = Array.from(doc.querySelectorAll('*')).filter(
+    (el) => getSnippet(el) === anchor.snippet,
+  );
+  const innermost = bySnippet.filter(
+    (el) => !bySnippet.some((other) => other !== el && el.contains(other)),
+  );
+  if (innermost.length === 1) return { state: 'moved', element: innermost[0] };
 
   return { state: 'stale', element: null };
 }

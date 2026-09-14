@@ -10,7 +10,8 @@ import type { AnnoStatus, Category } from '@/lib/types';
 import { usePinHTMLStore } from '@/lib/store';
 import { AnnoList } from '@/components/AnnoList';
 import { CategoryLabelDialog } from '@/components/CategoryLabelDialog';
-import { Settings2 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Search, Settings2, X } from 'lucide-react';
 
 const STATUS_OPTIONS: Array<{ value: 'all' | AnnoStatus; label: string }> = [
   { value: 'all', label: '全部' },
@@ -48,6 +49,8 @@ export function AnnoPanel() {
   const project = usePinHTMLStore((s) => s.project);
   const filters = usePinHTMLStore((s) => s.filters);
   const setFilters = usePinHTMLStore((s) => s.setFilters);
+  const query = usePinHTMLStore((s) => s.query);
+  const setQuery = usePinHTMLStore((s) => s.setQuery);
   const [labelsOpen, setLabelsOpen] = useState(false);
 
   const total = project?.annotations.length ?? 0;
@@ -100,6 +103,26 @@ export function AnnoPanel() {
               {getCategoryLabel(project, cat)}
             </PillButton>
           ))}
+        </div>
+
+        <div className="relative">
+          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="搜索标题 / 正文"
+            className="h-8 pr-7 pl-8 text-xs"
+          />
+          {query && (
+            <button
+              type="button"
+              title="清除搜索"
+              onClick={() => setQuery('')}
+              className="absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="size-3.5" />
+            </button>
+          )}
         </div>
       </div>
 

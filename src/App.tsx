@@ -36,6 +36,8 @@ export default function App() {
   const { saveJson, exportHtml, importJson, recheckAnchors } = useProjectActions();
 
   const [srcdoc, setSrcdoc] = useState<{ html: string; seq: number } | null>(null);
+  /** 文件拖拽悬停窗口时显示落点提示 */
+  const [dropActive, setDropActive] = useState(false);
   const [pendingDraft, setPendingDraft] = useState<{
     key: string;
     content: DraftContent;
@@ -100,27 +102,103 @@ export default function App() {
     setSrcdoc({ html: buildSrcdoc(cleanSource, bridgeSource), seq: loadSeqRef.current });
   }, []);
 
-  const handleFile = async (file: File): Promise<void> => {
-    try {
-      unmountViewer();
-      const result = await loadPrototypeFile(file);
-      // 草稿恢复检测（D2）：同键存在草稿且有标注 → 提示恢复或忽略
-      const key = draftKey(result.project.protoName, result.protoHash);
-      const draft = loadDraft(key);
-      if (draft && draft.project.annotations.length > 0) {
-        setPendingDraft({
-          key,
-          content: draft,
-          fallback: { project: result.project, cleanSource: result.cleanSource },
-        });
+  const handleFile = useCallback(
+    async (file: File): Promise<void> => {
+      try {
+        unmountViewer();
+        const result = await loadPrototypeFile(file);
+        // 草稿恢复检测（D2）：同键存在草稿且有标注 → 提示恢复或忽略
+        const key = draftKey(result.project.protoName, result.protoHash);
+        const draft = loadDraft(key);
+        if (draft && draft.project.annotations.length > 0) {
+          setPendingDraft({
+            key,
+            content: draft,
+            fallback: { project: result.project, cleanSource: result.cleanSource },
+          });
+          return;
+        }
+        renderProject(result.project, result.cleanSource);
+      } catch (err) {
+        console.error(err);
+        toast.error('原型加载失败');
+      }
+    },
+    [renderProject, unmountViewer],
+  );
+
+  /** 按扩展名分派拖入的文件：.html/.htm → 打开原型；.json → 导入标注 */
+  const routeFiles = useCallback(
+    (files: FileList | File[]): void => {
+      const list = Array.from(files);
+      const html = list.find((f) => /\.html?$/i.test(f.name));
+      if (html) {
+        setDropActive(false);
+        void handleFile(html);
         return;
       }
-      renderProject(result.project, result.cleanSource);
-    } catch (err) {
-      console.error(err);
-      toast.error('原型加载失败');
-    }
-  };
+      const json = list.find((f) => /\.json$/i.test(f.name));
+      if (json) {
+        setDropActive(false);
+        void importJson(json);
+        return;
+      }
+      toast.error('仅支持拖入 .html / .htm 原型或 .json 标注数据');
+    },
+    [handleFile, importJson],
+  );
+
+  // 工具外壳（顶栏 / 侧栏 / 空状态）区域的拖入；原型区域内的拖入由 bridge 转发（见 onIframeLoad）
+  useEffect(() => {
+    const hasFiles = (dt: DataTransfer | null): boolean =>
+      !!dt && Array.from(dt.types ?? []).includes('Files');
+    const onDragOver = (e: DragEvent): void => {
+      if (!hasFiles(e.dataTransfer)) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+      setDropActive(true);
+    };
+    const onDragLeave = (e: DragEvent): void => {
+      if (e.relatedTarget) return; // 指针仍在窗口内
+      setDropActive(false);
+    };
+    const onDrop = (e: DragEvent): void => {
+      if (!hasFiles(e.dataTransfer)) return;
+      e.preventDefault();
+      setDropActive(false);
+      if (e.dataTransfer && e.dataTransfer.files.length > 0) routeFiles(e.dataTransfer.files);
+    };
+    window.addEventListener('dragover', onDragOver);
+    window.addEventListener('dragleave', onDragLeave);
+    window.addEventListener('drop', onDrop);
+    return () => {
+      window.removeEventListener('dragover', onDragOver);
+      window.removeEventListener('dragleave', onDragLeave);
+      window.removeEventListener('drop', onDrop);
+    };
+  }, [routeFiles]);
+
+  // 全局快捷键：⌘/Ctrl+S 保存 JSON、⌘/Ctrl+E 导出 HTML、Esc 取消编辑
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent): void => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        saveJson();
+        return;
+      }
+      if (mod && (e.key === 'e' || e.key === 'E')) {
+        e.preventDefault();
+        exportHtml();
+        return;
+      }
+      if (e.key === 'Escape' && usePinHTMLStore.getState().editing) {
+        usePinHTMLStore.getState().cancelEdit();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [saveJson, exportHtml]);
 
   const onIframeLoad = (): void => {
     if (!iframeRef.current) return;
@@ -129,6 +207,14 @@ export default function App() {
     transport?.setMode(currentMode);
     transport?.onPick(handlePick);
     transport?.onLayerKey?.(handleLayerKey);
+    // 原型区域内拖入文件 / 快捷键（bridge 转发，实现「窗口任意位置」可用）
+    transport?.onFileDrop(routeFiles);
+    transport?.onFileDragState(setDropActive);
+    transport?.onShortcut((key) => {
+      if (key === 'save') saveJson();
+      else if (key === 'export') exportHtml();
+      else if (usePinHTMLStore.getState().editing) usePinHTMLStore.getState().cancelEdit();
+    });
     // 结构变化（含锚点元素消失）→ 防抖后三态判定（R7）
     transport?.onStructureChange(() => {
       if (structureTimerRef.current !== null) clearTimeout(structureTimerRef.current);
@@ -223,6 +309,18 @@ export default function App() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 拖入文件落点提示（pointer-events:none，不干扰 drop 命中） */}
+      {dropActive && (
+        <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-background/50">
+          <div className="rounded-2xl border-2 border-dashed border-matcha bg-white/95 px-10 py-7 text-center shadow-sm">
+            <div className="text-sm font-medium">松开以打开</div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              .html / .htm 原型，或 .json 标注数据
+            </div>
+          </div>
+        </div>
+      )}
 
       <Toaster />
     </div>

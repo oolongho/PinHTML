@@ -55,6 +55,8 @@ export interface PinHTMLState {
   mode: Mode;
   /** 侧栏筛选器 */
   filters: Filters;
+  /** 侧栏关键词搜索（匹配标题 / 正文；空串为不搜索；UI 态，不置 dirty） */
+  query: string;
   /** 编辑上下文（编辑器打开期间非 null） */
   editing: EditingState | null;
   /** 自上次保存/导出后是否有变更（beforeunload 提示依据，R9） */
@@ -70,6 +72,10 @@ export interface PinHTMLState {
   resetProject: () => void;
   setMode: (mode: Mode) => void;
   setFilters: (patch: Partial<Filters>) => void;
+  /** 设置侧栏搜索关键词（UI 态，不置 dirty） */
+  setQuery: (query: string) => void;
+  /** 重新插入一条被删除的标注（删除撤销；锚点本就保留，故只需回插标注；置 dirty） */
+  restoreAnnotation: (annotation: Annotation) => void;
   /** 打开编辑器（进入编辑上下文） */
   beginEdit: (state: EditingState) => void;
   /** 「上移一层」：改绑到新元素，原元素压入 pickHistory */
@@ -114,6 +120,7 @@ export const usePinHTMLStore = create<PinHTMLState>((set, get) => ({
   protoHash: null,
   mode: 'browse',
   filters: DEFAULT_FILTERS,
+  query: '',
   editing: null,
   dirty: false,
   staleAnchorIds: [],
@@ -126,6 +133,7 @@ export const usePinHTMLStore = create<PinHTMLState>((set, get) => ({
       protoHash,
       mode: 'browse',
       filters: DEFAULT_FILTERS,
+      query: '',
       editing: null,
       dirty: false,
       staleAnchorIds: [],
@@ -139,6 +147,7 @@ export const usePinHTMLStore = create<PinHTMLState>((set, get) => ({
       protoHash: null,
       mode: 'browse',
       filters: DEFAULT_FILTERS,
+      query: '',
       editing: null,
       dirty: false,
       staleAnchorIds: [],
@@ -156,6 +165,15 @@ export const usePinHTMLStore = create<PinHTMLState>((set, get) => ({
         categories: { ...s.filters.categories, ...(patch.categories ?? {}) },
       },
     })),
+
+  setQuery: (query) => set({ query }),
+
+  restoreAnnotation: (annotation) => {
+    const { project } = get();
+    if (!project) return;
+    if (project.annotations.some((a) => a.id === annotation.id)) return;
+    set({ project: { ...project, annotations: [...project.annotations, annotation] }, dirty: true });
+  },
 
   beginEdit: (state) => set({ editing: state }),
 

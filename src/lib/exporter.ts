@@ -8,6 +8,7 @@
  */
 import { STYLE_TEXT } from '@/viewer/style';
 import viewerSource from 'virtual:viewer-src';
+import { annoJsonName, exportHtmlName } from './naming';
 import type { Project } from './types';
 
 /** 序列化项目为 JSON 并转义 `</` → `<\/`（避免闭合 script 标签，R8） */
@@ -51,30 +52,24 @@ export function buildExportHtml(cleanSource: string, project: Project): string {
   return source + injection;
 }
 
-/** 下载导出产物（file:// 下 Blob + a[download] 通用，spec 方案 §2） */
-export function downloadHtml(cleanSource: string, project: Project): void {
-  const html = buildExportHtml(cleanSource, project);
-  const blob = new Blob([html], { type: 'text/html' });
-  const url = URL.createObjectURL(blob);
+/** 触发浏览器下载（file:// 下 Blob + a[download] 通用，spec 方案 §2） */
+function triggerDownload(content: BlobPart, mime: string, filename: string): void {
+  const url = URL.createObjectURL(new Blob([content], { type: mime }));
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${project.protoName.replace(/\.html?$/i, '')}-标注.html`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
 }
 
+/** 下载导出产物：文件名由 naming.ts 归一，重复导出不会累积「-标注」后缀 */
+export function downloadHtml(cleanSource: string, project: Project): void {
+  triggerDownload(buildExportHtml(cleanSource, project), 'text/html', exportHtmlName(project.protoName));
+}
+
 /** 下载项目 JSON（保存标注数据，spec R8「保存 JSON」） */
 export function downloadJson(project: Project): void {
-  const json = JSON.stringify(project, null, 2);
-  const blob = new Blob([json], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${project.protoName.replace(/\.html?$/i, '')}.anno.json`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+  triggerDownload(JSON.stringify(project, null, 2), 'application/json', annoJsonName(project.protoName));
 }

@@ -143,6 +143,27 @@
 
   function onKeyDown(e) {
     if (!config) return;
+    // 快捷键转发到父页（保存/导出/取消编辑由父页承担）——放在输入焦点判断之前，
+    // 保证在原型输入框内按 ⌘S 也能保存当前标注 JSON
+    if (config.onShortcut) {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        config.onShortcut('save');
+        return;
+      }
+      if (mod && (e.key === 'e' || e.key === 'E')) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        config.onShortcut('export');
+        return;
+      }
+      if (e.key === 'Escape') {
+        config.onShortcut('escape');
+        return;
+      }
+    }
     // 焦点在输入元素内不触发（原型自身表单输入不受干扰）
     const active = doc.activeElement;
     if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) {
@@ -162,6 +183,39 @@
     }
     // 通知父页（编辑器打开时据此改绑锚点父元素 / 撤回上次上移），与 bridge 自身调整互不冲突
     if (config.onLayerKey) config.onLayerKey(dir);
+  }
+
+  /* ---------- 拖入文件转发（仅 Files 类型，避免干扰原型自身拖拽交互） ---------- */
+
+  // 拖拽负载是否包含文件（内部元素拖拽不含 'Files'，据此放行原型自身 DnD）
+  function hasFiles(dt) {
+    if (!dt || !dt.types) return false;
+    for (let i = 0; i < dt.types.length; i += 1) {
+      if (dt.types[i] === 'Files') return true;
+    }
+    return false;
+  }
+
+  function onDragOver(e) {
+    if (!config || !hasFiles(e.dataTransfer)) return;
+    e.preventDefault(); // 允许 drop，否则浏览器会直接把文件当页面打开
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    if (config.onFileDragState) config.onFileDragState(true);
+  }
+
+  function onDragLeave(e) {
+    if (!config) return;
+    // relatedTarget 为 null 表示指针已离开整个文档
+    if (!e.relatedTarget && config.onFileDragState) config.onFileDragState(false);
+  }
+
+  function onDrop(e) {
+    if (!config || !hasFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const files = e.dataTransfer.files;
+    if (config.onFileDragState) config.onFileDragState(false);
+    if (files && files.length > 0 && config.onFileDrop) config.onFileDrop(files);
   }
 
   /* ---------- click 拦截与拾取 ---------- */
@@ -241,7 +295,12 @@
     doc.addEventListener('click', onClick, true); // capture 拦截
     doc.addEventListener('mouseover', onMouseOver, true); // capture 追踪
     doc.addEventListener('mouseleave', onMouseLeave, false);
-    doc.addEventListener('keydown', onKeyDown, true); // capture 层级键
+    doc.addEventListener('keydown', onKeyDown, true); // capture 层级键 + 快捷键转发
+    doc.addEventListener('dragover', onDragOver, true); // 拖入文件：允许 drop
+    doc.addEventListener('dragleave', onDragLeave, true);
+    doc.addEventListener('drop', onDrop, true);
+    w.addEventListener('dragover', onDragOver, true);
+    w.addEventListener('drop', onDrop, true);
   }
 
   function unbind() {
@@ -251,6 +310,11 @@
     doc.removeEventListener('mouseover', onMouseOver, true);
     doc.removeEventListener('mouseleave', onMouseLeave, false);
     doc.removeEventListener('keydown', onKeyDown, true);
+    doc.removeEventListener('dragover', onDragOver, true);
+    doc.removeEventListener('dragleave', onDragLeave, true);
+    doc.removeEventListener('drop', onDrop, true);
+    w.removeEventListener('dragover', onDragOver, true);
+    w.removeEventListener('drop', onDrop, true);
   }
 
   // DOM 就绪后绑定事件；若脚本求值时已就绪则立即执行
