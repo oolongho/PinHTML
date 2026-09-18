@@ -382,9 +382,7 @@
     hoverIndex = 0;
     pickOnce = false;
     mode = 'browse';
-    const cb = config && config.onDestroyed;
     config = null;
-    if (cb) cb();
   }
 
   /* ---------- 挂载 ---------- */

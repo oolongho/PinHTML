@@ -5,7 +5,7 @@
  * undoEditElement）与三态重锚定（rebindAnchor）。「上移一层」= 改绑父元素；「]」= 撤回上次上移；
  * stale 卡片「重新选择锚点」经 pickOnce 一次性拾取后改绑。
  */
-import { useCallback, useRef } from 'react';
+import { useCallback } from 'react';
 import { usePinHTMLStore } from '@/lib/store';
 import { buildSelector, getSnippet } from '@/lib/dom';
 import { getTransport } from '@/viewer/registry';
@@ -24,9 +24,6 @@ export interface AnnotationActions {
 }
 
 export function useAnnotationActions(): AnnotationActions {
-  /** 待重新选择的 stale 锚点 id（非空时，下一次拾取用于改绑） */
-  const pendingRebindRef = useRef<string | null>(null);
-
   const moveUp = useCallback(() => {
     const { editing, updateEditElement } = usePinHTMLStore.getState();
     if (!editing || !editing.element) return;
@@ -43,17 +40,16 @@ export function useAnnotationActions(): AnnotationActions {
   }, []);
 
   const handlePick = useCallback((element: Element) => {
-    // stale 重选：改绑锚点到新元素
-    const rebindId = pendingRebindRef.current;
-    if (rebindId) {
-      pendingRebindRef.current = null;
-      usePinHTMLStore
-        .getState()
-        .rebindAnchor(rebindId, element, buildSelector(element), getSnippet(element));
+    // stale 重选：改绑锚点到新元素（意图存在 store，见 pendingRebindAnchorId）
+    const { pendingRebindAnchorId, setPendingRebind, rebindAnchor, beginEdit } =
+      usePinHTMLStore.getState();
+    if (pendingRebindAnchorId) {
+      setPendingRebind(null);
+      rebindAnchor(pendingRebindAnchorId, element, buildSelector(element), getSnippet(element));
       return;
     }
     const existingId = element.getAttribute('data-anno-id');
-    usePinHTMLStore.getState().beginEdit({
+    beginEdit({
       annotationId: null,
       anchorId: existingId, // 已有锚点则复用追加；否则提交时新建
       element,
@@ -72,7 +68,7 @@ export function useAnnotationActions(): AnnotationActions {
   );
 
   const startRebind = useCallback((anchorId: string) => {
-    pendingRebindRef.current = anchorId;
+    usePinHTMLStore.getState().setPendingRebind(anchorId);
     // 进入一次性拾取态：下一次点击无论当前模式都回调 handlePick 一次
     getTransport()?.pickOnce(true);
   }, []);

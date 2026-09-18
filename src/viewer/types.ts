@@ -46,8 +46,6 @@ export interface MountOptions {
   frameEl?: HTMLIFrameElement | null;
   /** 工具模式 = React 渲染的 #annoList 容器（仅查询卡片元素，不渲染）；导出模式 = 侧栏列表容器 */
   cardsContainer?: HTMLElement | null;
-  /** 导出自举：viewer 自建侧栏的容器根（工具模式为 null） */
-  sidebarEl?: HTMLElement | null;
   /** () => Project，每次重算实时读取 */
   getProject: () => Project | null;
   /** () => Filters，每次重算实时读取 */

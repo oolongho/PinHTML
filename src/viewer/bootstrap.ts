@@ -88,7 +88,6 @@ export function bootstrap(): void {
     viewportDoc: doc,
     frameEl: null,
     cardsContainer: sidebar.listEl,
-    sidebarEl: sidebar.root,
     getProject: () => project,
     getFilters: () => filters,
     interactive: true,

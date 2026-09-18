@@ -96,16 +96,26 @@ export default function App() {
     return () => window.removeEventListener('beforeunload', handler);
   }, []);
 
-  const renderProject = useCallback((project: Project, cleanSource: string): void => {
-    usePinHTMLStore.getState().loadProject(project, cleanSource, project.protoHash);
-    loadSeqRef.current += 1;
-    setSrcdoc({ html: buildSrcdoc(cleanSource, bridgeSource), seq: loadSeqRef.current });
-  }, []);
+  const renderProject = useCallback(
+    (project: Project, cleanSource: string): void => {
+      // 旧原型退场（viewer + transport/bridge 一并销毁）。只在真正切换原型时执行：
+      // 草稿弹窗被取消时屏上原型与侧栏保持一致，不会被提前清空。
+      unmountViewer();
+      // 丢弃切换前挂起的结构重扫（否则会在新原型 DOM 上多跑一次无用判定）
+      if (structureTimerRef.current !== null) {
+        clearTimeout(structureTimerRef.current);
+        structureTimerRef.current = null;
+      }
+      usePinHTMLStore.getState().loadProject(project, cleanSource, project.protoHash);
+      loadSeqRef.current += 1;
+      setSrcdoc({ html: buildSrcdoc(cleanSource, bridgeSource), seq: loadSeqRef.current });
+    },
+    [unmountViewer],
+  );
 
   const handleFile = useCallback(
     async (file: File): Promise<void> => {
       try {
-        unmountViewer();
         const result = await loadPrototypeFile(file);
         // 草稿恢复检测（D2）：同键存在草稿且有标注 → 提示恢复或忽略
         const key = draftKey(result.project.protoName, result.protoHash);
@@ -124,7 +134,7 @@ export default function App() {
         toast.error('原型加载失败');
       }
     },
-    [renderProject, unmountViewer],
+    [renderProject],
   );
 
   /** 按扩展名分派拖入的文件：.html/.htm → 打开原型；.json → 导入标注 */

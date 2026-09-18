@@ -8,6 +8,7 @@
  */
 import { STYLE_TEXT } from '@/viewer/style';
 import viewerSource from 'virtual:viewer-src';
+import { resolveAnchor } from './reanchor';
 import { annoJsonName, exportHtmlName } from './naming';
 import type { Project } from './types';
 
@@ -16,18 +17,17 @@ function serializeProject(project: Project): string {
   return JSON.stringify(project).replace(/<\//g, '<\\/');
 }
 
-/** 把锚点 data-anno-id 回写到干净源的静态副本（依 selector 定位，避免序列化运行中污染 DOM） */
+/**
+ * 把锚点 data-anno-id 回写到干净源的静态副本。
+ * 复用三态判定的证据链（data-anno-id 命中 → selector + snippet 双证据 → snippet 全局唯一兜底），
+ * 避免原型改版后 selector 命中「错误的元素」却静默写坏锚点 —— 回放不到即不写属性，
+ * 锚点保留在 JSON 由产物打开时走三态判定（R8）。
+ */
 function injectAnchorIds(cleanSource: string, project: Project): string {
   const doc = new DOMParser().parseFromString(cleanSource, 'text/html');
   for (const anchor of project.anchors) {
-    let el: Element | null = null;
-    try {
-      el = doc.querySelector(anchor.selector);
-    } catch {
-      el = null;
-    }
-    // 回放不到 → 不写属性，锚点保留在 JSON，产物打开时走三态判定（R8）
-    if (el) el.setAttribute('data-anno-id', anchor.id);
+    const { element } = resolveAnchor(doc, anchor);
+    if (element) element.setAttribute('data-anno-id', anchor.id);
   }
   return '<!DOCTYPE html>' + doc.documentElement.outerHTML;
 }
@@ -41,15 +41,11 @@ export function buildExportHtml(cleanSource: string, project: Project): string {
   const runtime = `<script id="pinhtml-runtime">${viewerSource}</` + 'script>';
   const injection = style + data + runtime;
 
-  const bodyRe = /<\/body\s*>/gi;
-  let lastBodyIndex = -1;
-  let m: RegExpExecArray | null;
-  while ((m = bodyRe.exec(source)) !== null) lastBodyIndex = m.index;
-  if (lastBodyIndex >= 0) {
-    return source.slice(0, lastBodyIndex) + injection + source.slice(lastBodyIndex);
-  }
-  // 无 </body>：在 </html> 前注入（无则末尾追加）
-  return source + injection;
+  // 注入点 = 最后一个真实 </body>（正文里出现的 &lt;/body&gt; 是转义文本，不参与定位）；
+  // 干净源经 DOMParser 序列化后必然带 </body>，无则为防御性兜底
+  const bodyIndex = source.lastIndexOf('</body>');
+  if (bodyIndex < 0) return source + injection;
+  return source.slice(0, bodyIndex) + injection + source.slice(bodyIndex);
 }
 
 /** 触发浏览器下载（file:// 下 Blob + a[download] 通用，spec 方案 §2） */

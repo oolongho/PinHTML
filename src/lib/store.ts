@@ -63,6 +63,8 @@ export interface PinHTMLState {
   dirty: boolean;
   /** 失联锚点 id 集合（stale 态，卡片置灰 + 提供「重新选择锚点」，R7） */
   staleAnchorIds: string[];
+  /** 待重新选择的 stale 锚点 id（一次性拾取意图；下一次拾取用于改绑；载入原型时清空） */
+  pendingRebindAnchorId: string | null;
   /** 原型 DOM 结构版本（结构变化时自增，驱动依赖文档顺序的编号/排序重算；不置 dirty） */
   structureVersion: number;
 
@@ -106,6 +108,8 @@ export interface PinHTMLState {
   rebindAnchor: (anchorId: string, element: Element, selector: string, snippet: string) => void;
   /** 设置失联锚点集合（stale 态，R7） */
   setStaleAnchorIds: (ids: string[]) => void;
+  /** 设置待重新选择的锚点 id（null = 退出一次性拾取态；不置 dirty） */
+  setPendingRebind: (anchorId: string | null) => void;
   /** 原型 DOM 结构变化时递增版本号（驱动编号/排序重算） */
   bumpStructure: () => void;
   /** 更新分类显示名（用户自定义标签，置 dirty） */
@@ -125,6 +129,7 @@ export const usePinHTMLStore = create<PinHTMLState>((set, get) => ({
   dirty: false,
   staleAnchorIds: [],
   structureVersion: 0,
+  pendingRebindAnchorId: null,
 
   loadProject: (project, protoCleanSource, protoHash) =>
     set({
@@ -138,6 +143,7 @@ export const usePinHTMLStore = create<PinHTMLState>((set, get) => ({
       dirty: false,
       staleAnchorIds: [],
       structureVersion: 0,
+      pendingRebindAnchorId: null,
     }),
 
   resetProject: () =>
@@ -152,6 +158,7 @@ export const usePinHTMLStore = create<PinHTMLState>((set, get) => ({
       dirty: false,
       staleAnchorIds: [],
       structureVersion: 0,
+      pendingRebindAnchorId: null,
     }),
 
   setMode: (mode) => set({ mode }),
@@ -339,6 +346,8 @@ export const usePinHTMLStore = create<PinHTMLState>((set, get) => ({
   },
 
   setStaleAnchorIds: (ids) => set({ staleAnchorIds: ids }),
+
+  setPendingRebind: (anchorId) => set({ pendingRebindAnchorId: anchorId }),
 
   bumpStructure: () => set((s) => ({ structureVersion: s.structureVersion + 1 })),
 

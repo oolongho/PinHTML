@@ -66,9 +66,9 @@ export function buildCardDom(
   head.appendChild(createEl(doc, 'span', 'pinhtml-card-cat', catLabel));
   card.appendChild(head);
 
-  // 标题 / 正文
+  // 标题 / 正文（空正文不生成节点，避免卡片多出一段空行）
   card.appendChild(createEl(doc, 'div', 'pinhtml-card-title', annotation.title));
-  card.appendChild(createEl(doc, 'div', 'pinhtml-card-body', annotation.body));
+  if (annotation.body) card.appendChild(createEl(doc, 'div', 'pinhtml-card-body', annotation.body));
 
   // 标题后再拼「不可见」角标（有则不占卡片头部主要视觉）
   card.appendChild(createEl(doc, 'div', 'pinhtml-card-foot'));

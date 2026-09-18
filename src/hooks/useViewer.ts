@@ -48,7 +48,6 @@ export function useViewer(): ViewerController {
         viewportDoc: document,
         frameEl: iframe,
         cardsContainer: document.getElementById('annoList'),
-        sidebarEl: null,
         getProject: () => usePinHTMLStore.getState().project,
         getFilters: () => usePinHTMLStore.getState().filters,
         interactive: true,
@@ -65,6 +64,8 @@ export function useViewer(): ViewerController {
   const unmountViewer = useCallback(() => {
     viewerRef.current?.destroy();
     viewerRef.current = null;
+    // 先销毁 iframe 内 bridge（移除监听 / Observer / 注入高亮），再释放 transport 引用
+    transportRef.current?.destroy();
     transportRef.current = null;
     setViewerInstance(null);
     setTargetDoc(null);

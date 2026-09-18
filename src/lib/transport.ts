@@ -10,9 +10,6 @@
  */
 import type { Mode } from './types';
 
-/** 通信契约版本（bridge.version 应与之相等，供握手校验 / 调试） */
-export const TRANSPORT_VERSION = '1';
-
 /** 从原型 iframe 内转发的快捷键语义 */
 export type ShortcutKey = 'escape' | 'save' | 'export';
 
@@ -33,8 +30,6 @@ export interface BridgeConfig {
   onFileDragState?: (active: boolean) => void;
   /** 快捷键转发（原型内按下 Esc / ⌘S / ⌘E 时通知父页执行保存/导出/取消编辑） */
   onShortcut?: (key: ShortcutKey) => void;
-  /** bridge.destroy() 执行后的通知（可选，预留） */
-  onDestroyed?: () => void;
 }
 
 /**
@@ -47,7 +42,7 @@ export interface BridgeConfig {
  * DOMContentLoaded 后再绑定事件）；父页在 iframe load 后调 init 建立连接。
  */
 export interface PinHTMLBridge {
-  /** 通信契约版本，等于 TRANSPORT_VERSION */
+  /** 通信契约版本（bridge 与父页两侧同源，供调试核对） */
   version: string;
   /**
    * 初始化：父页建立连接时调用，注册回调；可重复调用，以最后一次为准。
@@ -82,10 +77,7 @@ declare global {
 
 /**
  * 跨文档操作接口（父页侧）。D1：可整体替换为 postMessage 实现的收敛点。
- *
- * pinEvent 预留位说明：pin 点击联动由 viewer.mount({ onPinClick }) 回调承担
- * （viewer 直接在 pin 层做事件委托），不经 transport；若未来 transport 替换为
- * postMessage 实现，需在此接口增加 onPinEvent(cb: (anchorId: string) => void) 预留位。
+ * pin 点击联动不经此接口：由 viewer.mount({ onPinClick }) 在 pin 层做事件委托承担。
  */
 export interface Transport {
   /** 切换 iframe 内模式（browse 零拦截 / annotate 拾取） */
@@ -106,6 +98,8 @@ export interface Transport {
   onShortcut(cb: (key: ShortcutKey) => void): void;
   /** 滚动 data-anno-id = anchorId 的元素到 iframe 视口中央 */
   locate(anchorId: string): void;
+  /** 销毁 iframe 内 bridge（移除监听 / Observer / 注入样式），切换或关闭原型时调用 */
+  destroy(): void;
 }
 
 /**
@@ -164,5 +158,6 @@ export function createDirectTransport(iframe: HTMLIFrameElement): Transport | nu
       shortcutCb = cb;
     },
     locate: (anchorId) => bridge.locate(anchorId),
+    destroy: () => bridge.destroy(),
   };
 }

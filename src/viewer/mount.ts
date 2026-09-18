@@ -266,6 +266,11 @@ export function mount(opts: MountOptions): ViewerInstance {
 
   /* ---------- 触发源注册 ---------- */
 
+  /** 注入 class 是否出现在 class 属性值中（注入 class 统一 pinhtml- 前缀，方案 §9 约定） */
+  function hasInjectedClass(raw: string | null): boolean {
+    return !!raw && raw.split(/\s+/).some((c) => c.startsWith('pinhtml-'));
+  }
+
   function isSelfMutation(m: MutationRecord): boolean {
     const t = m.target as HTMLElement | null;
     if (!t) return false;
@@ -274,6 +279,11 @@ export function mount(opts: MountOptions): ViewerInstance {
     if (layer && layer.contains(t)) return true;
     const svg = viewportDoc.getElementById('pinhtml-svg-layer');
     if (svg && svg.contains(t)) return true;
+    // 注入 class 的切换（bridge 拾取高亮 / 卡片 active / 图钉 active）不是原型结构变化：
+    // 不过滤的话，标注模式下每次悬停都会触发一次全量几何重算
+    if (m.type === 'attributes' && m.attributeName === 'class') {
+      if (hasInjectedClass(m.oldValue) || hasInjectedClass(t.getAttribute('class'))) return true;
+    }
     return false;
   }
 
@@ -295,7 +305,12 @@ export function mount(opts: MountOptions): ViewerInstance {
       }
     }
   });
-  observer.observe(targetDoc, { childList: true, subtree: true, attributes: true });
+  observer.observe(targetDoc, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeOldValue: true, // 供 isSelfMutation 识别注入 class 的切换
+  });
 
   viewportDoc.addEventListener('mouseover', onViewportMouseOver, true);
   viewportDoc.addEventListener('click', onViewportClick, true);

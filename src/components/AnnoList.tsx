@@ -35,7 +35,8 @@ export function AnnoList() {
   const filters = usePinHTMLStore((s) => s.filters);
   const editing = usePinHTMLStore((s) => s.editing);
   const staleAnchorIds = usePinHTMLStore((s) => s.staleAnchorIds);
-  const structureVersion = usePinHTMLStore((s) => s.structureVersion);
+  // 订阅结构版本：原型 DOM 结构变化时强制本组件重渲染（驱动下方编号/排序重算），值本身不参与渲染
+  usePinHTMLStore((s) => s.structureVersion);
   const query = usePinHTMLStore((s) => s.query);
   const { moveUp, startRebind } = useAnnotationActions();
 
@@ -54,8 +55,7 @@ export function AnnoList() {
 
   // 固定编号（与图钉同源）+ 排序 + 过滤。
   // 有意不做 useMemo 缓存：编号依赖原型「实时」DOM 顺序，无法用依赖数组可靠表达；
-  // 且标注量级很小（<100），每次渲染重算成本可忽略。
-  // structureVersion 订阅用于在原型 DOM 结构变化时触发本组件重渲染（下方以 data 属性落地）。
+  // 且标注量级很小（<100），每次渲染重算成本可忽略；结构变化由上方 structureVersion 订阅驱动重渲染。
   const targetDoc = getTargetDoc() ?? document;
   const passFilters: AnnoRow[] = project
     ? (() => {
@@ -94,7 +94,7 @@ export function AnnoList() {
   const deleted = rows.find((r) => r.anno.id === pendingDeleteId)?.anno;
 
   return (
-    <div className="space-y-2" data-structure-version={structureVersion}>
+    <div className="space-y-2">
       {!project && (
         <div className="px-2 py-8 text-center text-xs text-muted-foreground">
           打开原型后，在这里书写标注
@@ -161,7 +161,9 @@ export function AnnoList() {
           <DialogHeader>
             <DialogTitle>删除标注</DialogTitle>
             <DialogDescription>
-              {deleted ? `确认删除「${deleted.title}」？此操作不可撤销。` : '确认删除该标注？'}
+              {deleted
+                ? `确认删除「${deleted.title}」？删除后可在提示中撤销。`
+                : '确认删除该标注？'}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
