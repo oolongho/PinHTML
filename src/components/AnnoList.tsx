@@ -35,6 +35,7 @@ export function AnnoList() {
   const filters = usePinHTMLStore((s) => s.filters);
   const editing = usePinHTMLStore((s) => s.editing);
   const staleAnchorIds = usePinHTMLStore((s) => s.staleAnchorIds);
+  const otherPageAnchorIds = usePinHTMLStore((s) => s.otherPageAnchorIds);
   // 订阅结构版本：原型 DOM 结构变化时强制本组件重渲染（驱动下方编号/排序重算），值本身不参与渲染
   usePinHTMLStore((s) => s.structureVersion);
   const query = usePinHTMLStore((s) => s.query);
@@ -146,6 +147,7 @@ export function AnnoList() {
             annotation={anno}
             hidden={hiddenMap[anno.anchorId] === false}
             stale={staleAnchorIds.includes(anno.anchorId)}
+            otherPage={otherPageAnchorIds.includes(anno.anchorId)}
             onLocate={() => locate(anno)}
             onEdit={() => beginEditNew(anno)}
             onDelete={() => setPendingDeleteId(anno.id)}

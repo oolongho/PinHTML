@@ -14,6 +14,8 @@ interface AnnoCardProps {
   hidden: boolean;
   /** 锚点失联（stale，R7）：置灰 + 提供「重新选择锚点」 */
   stale: boolean;
+  /** 锚点属于其他页（URL 模式多页原型，R13）：卡片正常显示 + 「属于其他页」角标 */
+  otherPage: boolean;
   onLocate: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -26,6 +28,7 @@ export function AnnoCard({
   annotation,
   hidden,
   stale,
+  otherPage,
   onLocate,
   onEdit,
   onDelete,
@@ -66,6 +69,7 @@ export function AnnoCard({
           </button>
         )}
         {hidden && <span className="pinhtml-card-badge">不可见（当前视图）</span>}
+        {otherPage && <span className="pinhtml-card-badge">属于其他页</span>}
         <div className="ml-auto flex items-center gap-2">
           {stale && (
             <button
