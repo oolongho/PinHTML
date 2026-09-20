@@ -10,7 +10,7 @@
  * - loadProject / markSaved / resetProject 将 dirty 归 false。
  */
 import { create } from 'zustand';
-import { buildSelector, getSnippet } from './dom';
+import { buildSelector, docPageKey, getSnippet } from './dom';
 import { DEFAULT_FILTERS } from './types';
 import type { Anchor, Annotation, Category, Filters, Mode, Project } from './types';
 
@@ -63,6 +63,8 @@ export interface PinHTMLState {
   dirty: boolean;
   /** 失联锚点 id 集合（stale 态，卡片置灰 + 提供「重新选择锚点」，R7） */
   staleAnchorIds: string[];
+  /** 属于其他页的锚点 id 集合（URL 模式多页原型，R13；卡片显示「属于其他页」而非失联） */
+  otherPageAnchorIds: string[];
   /** 待重新选择的 stale 锚点 id（一次性拾取意图；下一次拾取用于改绑；载入原型时清空） */
   pendingRebindAnchorId: string | null;
   /** 原型 DOM 结构版本（结构变化时自增，驱动依赖文档顺序的编号/排序重算；不置 dirty） */
@@ -108,6 +110,8 @@ export interface PinHTMLState {
   rebindAnchor: (anchorId: string, element: Element, selector: string, snippet: string) => void;
   /** 设置失联锚点集合（stale 态，R7） */
   setStaleAnchorIds: (ids: string[]) => void;
+  /** 设置「属于其他页」锚点集合（URL 模式多页原型，R13） */
+  setOtherPageAnchorIds: (ids: string[]) => void;
   /** 设置待重新选择的锚点 id（null = 退出一次性拾取态；不置 dirty） */
   setPendingRebind: (anchorId: string | null) => void;
   /** 原型 DOM 结构变化时递增版本号（驱动编号/排序重算） */
@@ -128,6 +132,7 @@ export const usePinHTMLStore = create<PinHTMLState>((set, get) => ({
   editing: null,
   dirty: false,
   staleAnchorIds: [],
+  otherPageAnchorIds: [],
   structureVersion: 0,
   pendingRebindAnchorId: null,
 
@@ -142,6 +147,7 @@ export const usePinHTMLStore = create<PinHTMLState>((set, get) => ({
       editing: null,
       dirty: false,
       staleAnchorIds: [],
+      otherPageAnchorIds: [],
       structureVersion: 0,
       pendingRebindAnchorId: null,
     }),
@@ -157,6 +163,7 @@ export const usePinHTMLStore = create<PinHTMLState>((set, get) => ({
       editing: null,
       dirty: false,
       staleAnchorIds: [],
+      otherPageAnchorIds: [],
       structureVersion: 0,
       pendingRebindAnchorId: null,
     }),
@@ -249,7 +256,15 @@ export const usePinHTMLStore = create<PinHTMLState>((set, get) => ({
         } else {
           anchorSeq += 1;
           anchorId = `e-${anchorSeq}`;
-          const anchor: Anchor = { id: anchorId, selector, snippet, createdAt: now };
+          // 页面归属：URL 模式（真实文档 URL）下记录当前页路径；srcdoc 单文档不记录（R13）
+          const pageKey = docPageKey(el.ownerDocument);
+          const anchor: Anchor = {
+            id: anchorId,
+            selector,
+            snippet,
+            ...(pageKey ? { docPath: pageKey } : {}),
+            createdAt: now,
+          };
           anchors = [...anchors, anchor];
         }
         el.setAttribute('data-anno-id', anchorId);
@@ -329,23 +344,28 @@ export const usePinHTMLStore = create<PinHTMLState>((set, get) => ({
   rebindAnchor: (anchorId, element, selector, snippet) => {
     const { project } = get();
     if (!project) return;
+    // 改绑即认定「这条锚点归属当前页」：更新页面归属（srcdoc 单文档则清空）
+    const pageKey = docPageKey(element.ownerDocument);
     let found = false;
     const anchors = project.anchors.map((a) => {
       if (a.id !== anchorId) return a;
       found = true;
-      return { ...a, selector, snippet };
+      return { ...a, selector, snippet, docPath: pageKey ?? undefined };
     });
     if (!found) return;
     element.setAttribute('data-anno-id', anchorId);
-    // 重绑成功后从失联集合移除
+    // 重绑成功后从失联 / 其他页集合移除
     set({
       project: { ...project, anchors },
       staleAnchorIds: get().staleAnchorIds.filter((id) => id !== anchorId),
+      otherPageAnchorIds: get().otherPageAnchorIds.filter((id) => id !== anchorId),
       dirty: true,
     });
   },
 
   setStaleAnchorIds: (ids) => set({ staleAnchorIds: ids }),
+
+  setOtherPageAnchorIds: (ids) => set({ otherPageAnchorIds: ids }),
 
   setPendingRebind: (anchorId) => set({ pendingRebindAnchorId: anchorId }),
 

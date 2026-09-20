@@ -6,7 +6,8 @@
  */
 import { beforeEach, describe, expect, it } from 'vitest';
 import { filterAnnotations, usePinHTMLStore } from './store';
-import { buildSelector, getSnippet } from './dom';
+import { buildSelector, docPageKey, getSnippet } from './dom';
+import { partitionByPage } from './reanchor';
 import { DEFAULT_FILTERS } from './types';
 import type { Annotation, Project } from './types';
 
@@ -69,6 +70,35 @@ describe('commitAnnotation', () => {
     expect(s().project?.anchors[0].snippet).toBe('保存');
     expect(s().editing).toBeNull();
     expect(s().dirty).toBe(true);
+  });
+
+  it('页面归属：真实 URL 文档记录页面键，并据此与其他页分流', () => {
+    const pageKey = docPageKey(doc);
+    expect(pageKey).not.toBeNull(); // happy-dom 文档 URL 为真实地址（等价 URL 模式）
+    s().beginEdit({ annotationId: null, anchorId: null, element: btn, pickHistory: [] });
+    s().commitAnnotation({ title: '标题', body: '', color: 'note' });
+    const anchors = s().project?.anchors ?? [];
+
+    expect(anchors[0].docPath).toBe(pageKey);
+    // 同一页 → 参与三态判定；其他页 → 归入其他页；单文档（null，srcdoc 模式）→ 全部视为当前页
+    expect(partitionByPage(anchors, pageKey).onPage.map((a) => a.id)).toEqual(['e-1']);
+    expect(partitionByPage(anchors, '/p2.html').offPage.map((a) => a.id)).toEqual(['e-1']);
+    expect(partitionByPage(anchors, null).onPage.map((a) => a.id)).toEqual(['e-1']);
+  });
+
+  it('rebindAnchor：改绑后从「属于其他页」集合移除并写新属性', () => {
+    s().beginEdit({ annotationId: null, anchorId: null, element: btn, pickHistory: [] });
+    s().commitAnnotation({ title: '标题', body: '', color: 'note' });
+    const other = doc.createElement('button');
+    other.textContent = '保存';
+    doc.body.appendChild(other);
+
+    s().setOtherPageAnchorIds(['e-1']);
+    s().rebindAnchor('e-1', other, 'body > button', '保存');
+
+    expect(s().otherPageAnchorIds).toEqual([]);
+    expect(other.getAttribute('data-anno-id')).toBe('e-1');
+    expect(s().project?.anchors[0].selector).toBe('body > button');
   });
 
   it('同一元素追加标注：复用锚点，不新增 anchor、不推进 anchorSeq', () => {

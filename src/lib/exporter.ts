@@ -25,7 +25,11 @@ function serializeProject(project: Project): string {
  */
 function injectAnchorIds(cleanSource: string, project: Project): string {
   const doc = new DOMParser().parseFromString(cleanSource, 'text/html');
+  const page = project.protoDocPath;
   for (const anchor of project.anchors) {
+    // 其他页的锚点（URL 模式多页原型，R13）：其元素不在这份干净源里，
+    // 跳过回放以免 selector/snippet 偶然命中本页元素、把标注钉到错误位置
+    if (page && anchor.docPath && anchor.docPath !== page) continue;
     const { element } = resolveAnchor(doc, anchor);
     if (element) element.setAttribute('data-anno-id', anchor.id);
   }

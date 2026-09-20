@@ -76,3 +76,23 @@ export function reanchorAll(doc: Document, anchors: Anchor[]): ReanchorOutcome {
   }
   return { fresh, moved, stale };
 }
+
+/**
+ * 按页面归属切分锚点（URL 模式多页原型，R13）：只有「当前页的锚点」才参与三态判定。
+ * - docKey 为 null（srcdoc 文件模式，单文档）→ 全部视为当前页；
+ * - 锚点未记录 docPath（老项目 / 文件模式创建）→ 视为当前页，避免切换模式时集体误判失联；
+ * - 其余按 docPath 是否等于当前页键分流，其他页的锚点保持原状态（不判定、不置失联）。
+ */
+export function partitionByPage(
+  anchors: Anchor[],
+  docKey: string | null,
+): { onPage: Anchor[]; offPage: Anchor[] } {
+  if (docKey === null) return { onPage: anchors, offPage: [] };
+  const onPage: Anchor[] = [];
+  const offPage: Anchor[] = [];
+  for (const anchor of anchors) {
+    if (anchor.docPath && anchor.docPath !== docKey) offPage.push(anchor);
+    else onPage.push(anchor);
+  }
+  return { onPage, offPage };
+}

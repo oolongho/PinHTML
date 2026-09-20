@@ -4,8 +4,8 @@
  * 职责：
  * - 挂载 window.PinHTMLBridge（version / init / setMode / setPickOnce / locate / destroy），
  *   供父页经 contentDocument 直连握手（契约见 src/lib/transport.ts）
- * - 模式切换：浏览零拦截（原型交互照常）/ 标注模式 capture 阶段拦截 click
- *   （preventDefault + stopImmediatePropagation），随后按当前层级选中元素回调 onPick
+ * - 模式切换：浏览零拦截（原型交互照常，仅守卫会离开当前文档的链接与表单导航）/
+ *   标注模式 capture 阶段拦截 click（preventDefault + stopImmediatePropagation），随后按当前层级选中元素回调 onPick
  * - hover 拾取高亮：mouseover（capture）追踪最内层元素，class 注入 + !important
  *   （2px 抹茶绿描边 + 10% 抹茶绿底，D4）；`[` 放宽一层 / `]` 收窄一层（沿原 hover 路径）
  * - MutationObserver（childList + subtree + attributes）→ rAF 合并转发 onStructureChange，
@@ -218,12 +218,62 @@
     if (files && files.length > 0 && config.onFileDrop) config.onFileDrop(files);
   }
 
+  /* ---------- 导航守卫 ---------- */
+
+  // 守卫只在「文档没有真实 URL」的 srcdoc 模式下生效：srcdoc 文档的 base 会回落到父页 URL，
+  // 片段 / 相对 / 外链导航都会跑飞；URL 模式（iframe src=同源地址）文档有真实基准，导航照常
+  function needsNavigationGuard() {
+    return w.location.href.indexOf('about:') === 0;
+  }
+
+  // 带 scheme（http: / mailto: / javascript: …）或协议相对（//host）的绝对地址
+  function isAbsoluteHref(href) {
+    return /^[a-z][a-z0-9+.-]*:/i.test(href) || href.indexOf('//') === 0;
+  }
+
+  // 浏览模式下的导航守卫（仅 srcdoc 模式生效，见 needsNavigationGuard）：
+  // 只处理会离开当前文档的导航，其余交浏览器。
+  // 片段链接改写成同文档片段导航，保证原型自己的 hashchange 路由照常工作；
+  // 相对路径（srcdoc 下无有效基准）与绝对 http(s) 外链（会把 iframe 甚至工具窗口
+  // ——target=_top/_parent——替换掉）都拦下，交父页提示（外链由父页 toast 提供「打开」）
+  function guardNavigation(e) {
+    if (!needsNavigationGuard()) return;
+    const t = e.target;
+    const a = t && t.closest ? t.closest('a[href]') : null;
+    if (!a) return;
+    const href = a.getAttribute('href');
+    if (!href) return;
+    if (href.charAt(0) === '#') {
+      e.preventDefault();
+      w.location.hash = href;
+      return;
+    }
+    // target=_blank：浏览器自己开新标签页，不干扰原型视图；非 http(s) 的 scheme（mailto 等）同理
+    if (a.target === '_blank') return;
+    if (isAbsoluteHref(href) && !/^https?:/i.test(href) && href.indexOf('//') !== 0) return;
+    e.preventDefault();
+    if (config && config.onBlockedNavigation) config.onBlockedNavigation(href);
+  }
+
+  // 表单提交（含输入框回车隐式提交）同样会把 iframe 带跑：一律拦下，交父页提示。
+  // 标注模式也拦（该模式下 click 已被拦截，但回车提交不经过 click）
+  function onSubmit(e) {
+    if (!config || !config.onBlockedNavigation || !needsNavigationGuard()) return;
+    const form = e.target;
+    const action = form && form.getAttribute ? form.getAttribute('action') : '';
+    e.preventDefault();
+    config.onBlockedNavigation(action || '表单提交');
+  }
+
   /* ---------- click 拦截与拾取 ---------- */
 
   function onClick(e) {
     if (!config) return;
-    // 浏览模式且未开启一次性拾取：完全零拦截，原型交互照常
-    if (mode !== 'annotate' && !pickOnce) return;
+    // 浏览模式且未开启一次性拾取：不拦截原型交互，只挡住会离开文档的导航
+    if (mode !== 'annotate' && !pickOnce) {
+      guardNavigation(e);
+      return;
+    }
     const target = e.target;
     // pin 层内元素放行：viewer 的事件委托照常处理 pin 点击联动
     if (inPinLayer(target)) return;
@@ -293,6 +343,7 @@
     if (bound || destroyed) return;
     bound = true;
     doc.addEventListener('click', onClick, true); // capture 拦截
+    doc.addEventListener('submit', onSubmit, true); // capture 拦截表单导航
     doc.addEventListener('mouseover', onMouseOver, true); // capture 追踪
     doc.addEventListener('mouseleave', onMouseLeave, false);
     doc.addEventListener('keydown', onKeyDown, true); // capture 层级键 + 快捷键转发
@@ -307,6 +358,7 @@
     if (!bound) return;
     bound = false;
     doc.removeEventListener('click', onClick, true);
+    doc.removeEventListener('submit', onSubmit, true);
     doc.removeEventListener('mouseover', onMouseOver, true);
     doc.removeEventListener('mouseleave', onMouseLeave, false);
     doc.removeEventListener('keydown', onKeyDown, true);

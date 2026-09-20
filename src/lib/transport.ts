@@ -30,6 +30,12 @@ export interface BridgeConfig {
   onFileDragState?: (active: boolean) => void;
   /** 快捷键转发（原型内按下 Esc / ⌘S / ⌘E 时通知父页执行保存/导出/取消编辑） */
   onShortcut?: (key: ShortcutKey) => void;
+  /**
+   * 导航被阻止回调：会离开当前文档的导航（相对路径链接、绝对 http(s) 外链、表单提交）
+   * 在 srcdoc 下无法跟随，bridge 已 preventDefault，并把目标回传给父页提示用户
+   * （相对路径回传 href；表单回传 action，无 action 时为「表单提交」）。
+   */
+  onBlockedNavigation?: (href: string) => void;
 }
 
 /**
@@ -96,6 +102,8 @@ export interface Transport {
   onFileDragState(cb: (active: boolean) => void): void;
   /** 注册快捷键转发回调（原型内按下 Esc / ⌘S / ⌘E） */
   onShortcut(cb: (key: ShortcutKey) => void): void;
+  /** 注册导航被阻止回调（原型内相对路径链接；bridge 已阻止跳转，父页据此提示） */
+  onBlockedNavigation(cb: (href: string) => void): void;
   /** 滚动 data-anno-id = anchorId 的元素到 iframe 视口中央 */
   locate(anchorId: string): void;
   /** 销毁 iframe 内 bridge（移除监听 / Observer / 注入样式），切换或关闭原型时调用 */
@@ -116,6 +124,7 @@ export function createDirectTransport(iframe: HTMLIFrameElement): Transport | nu
   let fileDropCb: ((files: FileList) => void) | null = null;
   let fileDragStateCb: ((active: boolean) => void) | null = null;
   let shortcutCb: ((key: ShortcutKey) => void) | null = null;
+  let blockedNavCb: ((href: string) => void) | null = null;
   bridge.init({
     onPick: (el) => {
       if (pickCb) pickCb(el);
@@ -134,6 +143,9 @@ export function createDirectTransport(iframe: HTMLIFrameElement): Transport | nu
     },
     onShortcut: (key) => {
       if (shortcutCb) shortcutCb(key);
+    },
+    onBlockedNavigation: (href) => {
+      if (blockedNavCb) blockedNavCb(href);
     },
   });
   return {
@@ -156,6 +168,9 @@ export function createDirectTransport(iframe: HTMLIFrameElement): Transport | nu
     },
     onShortcut: (cb) => {
       shortcutCb = cb;
+    },
+    onBlockedNavigation: (cb) => {
+      blockedNavCb = cb;
     },
     locate: (anchorId) => bridge.locate(anchorId),
     destroy: () => bridge.destroy(),

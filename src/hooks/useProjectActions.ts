@@ -9,8 +9,8 @@ import { toast } from 'sonner';
 import { usePinHTMLStore } from '@/lib/store';
 import { downloadHtml, downloadJson } from '@/lib/exporter';
 import { parseProjectJson, mergeProjects } from '@/lib/importer';
-import { reanchorAll } from '@/lib/reanchor';
-import { buildSelector, getSnippet } from '@/lib/dom';
+import { reanchorAll, partitionByPage } from '@/lib/reanchor';
+import { buildSelector, docPageKey, getSnippet } from '@/lib/dom';
 import { draftKey, removeDraft } from '@/lib/draft';
 import { getTargetDoc } from '@/viewer/registry';
 
@@ -84,8 +84,18 @@ export function useProjectActions(): ProjectActions {
     const doc = getTargetDoc();
     if (!s.project || !doc) return;
 
+    // 页面归属（URL 模式多页原型，R13）：只判定当前页的锚点；其他页的锚点保持原状态，
+    // 在侧栏显示「属于其他页」而不是失联
+    const { onPage, offPage } = partitionByPage(s.project.anchors, docPageKey(doc));
+    const prevOther = s.otherPageAnchorIds;
+    const otherChanged =
+      prevOther.length !== offPage.length || prevOther.some((id) => !offPage.some((a) => a.id === id));
+    if (otherChanged) {
+      usePinHTMLStore.getState().setOtherPageAnchorIds(offPage.map((a) => a.id));
+    }
+
     // 仅检查 data-anno-id 未命中的锚点（元素可能已被原型重渲染 / 移除）
-    const missing = s.project.anchors.filter((a) => !doc.querySelector(`[data-anno-id="${a.id}"]`));
+    const missing = onPage.filter((a) => !doc.querySelector(`[data-anno-id="${a.id}"]`));
     let movedCount = 0;
     const staleIds: string[] = [];
     if (missing.length > 0) {

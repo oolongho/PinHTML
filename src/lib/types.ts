@@ -23,6 +23,11 @@ export interface Anchor {
   selector: string;
   /** 锚定元素 textContent 规范化空白后前 40 字符，重绑时的第二证据 */
   snippet: string;
+  /**
+   * 页面归属（URL 模式多页原型，R13）：创建时的文档路径（pathname + search）。
+   * 缺省 = 未记录（srcdoc 文件模式 / 老项目），按「当前页」处理。
+   */
+  docPath?: string;
   /** 创建时间（ISO 8601） */
   createdAt: string;
 }
@@ -61,6 +66,11 @@ export interface Project {
   annoSeq: number;
   anchors: Anchor[];
   annotations: Annotation[];
+  /**
+   * 干净源对应的页面键（URL 模式加载时记录；文件模式缺省）。
+   * 导出注入时据此跳过「属于其他页」的锚点（那些元素不在本份干净源里）。
+   */
+  protoDocPath?: string;
   /** 分类显示名覆盖（用户自定义；未覆盖的分类用 CATEGORY_META 默认中文名） */
   categoryLabels?: Partial<Record<Category, string>>;
 }

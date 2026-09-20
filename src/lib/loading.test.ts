@@ -2,7 +2,16 @@
  * loading.test.ts —— 原型加载与导出产物剥离单测（spec R1 加载原型 / R8 幂等）
  */
 import { describe, expect, it } from 'vitest';
-import { buildSrcdoc, computeProtoHash, createEmptyProject, loadPrototypeFile, stripInjections } from './loading';
+import {
+  buildSrcdoc,
+  computeProtoHash,
+  createEmptyProject,
+  injectBridgeIntoDoc,
+  loadPrototypeFile,
+  loadPrototypeText,
+  prototypeNameFromUrl,
+  stripInjections,
+} from './loading';
 
 const PROJECT_JSON = JSON.stringify({
   schema: 1,
@@ -88,6 +97,48 @@ describe('computeProtoHash', () => {
   });
 });
 
+describe('URL 模式（R13）', () => {
+  it('原型名取路径末段文件名（解码百分号编码，忽略查询与片段）', () => {
+    expect(prototypeNameFromUrl('http://localhost:8000/proto.html')).toBe('proto.html');
+    expect(prototypeNameFromUrl('http://localhost:8000/a%20b.htm?v=2#x')).toBe('a b.htm');
+  });
+
+  it('末段不是 .html/.htm 时回落 prototype.html（目录地址 / 端口根）', () => {
+    expect(prototypeNameFromUrl('http://localhost:8000/dir/')).toBe('prototype.html');
+    expect(prototypeNameFromUrl('http://localhost:8000')).toBe('prototype.html');
+  });
+
+  it('loadPrototypeText 与 loadPrototypeFile 同流水线：普通原型建空项目且非导出产物', async () => {
+    const r = await loadPrototypeText('p.html', '<body><div>普通原型</div></body>');
+    expect(r.project.annotations).toEqual([]);
+    expect(r.project.protoName).toBe('p.html');
+    expect(r.restored).toBe(false);
+    expect(r.isExportArtifact).toBe(false);
+    expect(r.protoHash).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  it('loadPrototypeText 识别导出产物（URL 模式据此拒绝，避免其内嵌运行时在 iframe 内自举）', async () => {
+    const r = await loadPrototypeText('p.html', EXPORTED_HTML);
+    expect(r.isExportArtifact).toBe(true);
+    expect(r.restored).toBe(true);
+    expect(r.cleanSource).not.toContain('pinhtml-runtime');
+  });
+
+  it('injectBridgeIntoDoc 注入 bridge 脚本且幂等', () => {
+    const doc = new DOMParser().parseFromString('<html><head></head><body>x</body></html>', 'text/html');
+    injectBridgeIntoDoc(doc, 'window.PinHTMLBridge = {};');
+    injectBridgeIntoDoc(doc, 'window.PinHTMLBridge = {};');
+    const scripts = doc.querySelectorAll('script#pinhtml-bridge-script');
+    expect(scripts).toHaveLength(1);
+    expect(scripts[0].textContent).toBe('window.PinHTMLBridge = {};');
+    expect(doc.head.contains(scripts[0])).toBe(true);
+  });
+
+  it('injectBridgeIntoDoc 对空文档安全', () => {
+    expect(() => injectBridgeIntoDoc(null, 'x')).not.toThrow();
+  });
+});
+
 describe('buildSrcdoc', () => {
   it('在末个 </body> 前注入 bridge 脚本', () => {
     const out = buildSrcdoc('<html><body><p>x</p></body></html>', 'var bridge = 1;');
@@ -100,6 +151,29 @@ describe('buildSrcdoc', () => {
     const out = buildSrcdoc('<div>plain</div>', 'var bridge = 1;');
     expect(out).toContain('var bridge = 1;');
     expect(out.indexOf('var bridge = 1;')).toBeGreaterThan(out.indexOf('<div>plain</div>'));
+  });
+
+  it('在 head 起始处注入中性 base（srcdoc 的 base 会回落到父页 URL，片段链接会跑飞）', () => {
+    const out = buildSrcdoc(
+      '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>x</body></html>',
+      'var bridge = 1;',
+    );
+    expect(out).toContain('<base id="pinhtml-base" href="about:srcdoc">');
+    expect(out.indexOf('pinhtml-base')).toBeLessThan(out.indexOf('<meta charset'));
+  });
+
+  it('无 head 时注入到 html 起始处', () => {
+    const out = buildSrcdoc('<html><body>x</body></html>', 'var bridge = 1;');
+    expect(out.indexOf('pinhtml-base')).toBeLessThan(out.indexOf('<body>'));
+  });
+
+  it('原型自带的 base 不被覆盖（保留其资源解析基准）', () => {
+    const out = buildSrcdoc(
+      '<html><head><base href="https://cdn.example.com/a/"></head><body>x</body></html>',
+      'var bridge = 1;',
+    );
+    expect(out).not.toContain('pinhtml-base');
+    expect(out.match(/<base/g)).toHaveLength(1);
   });
 });
 

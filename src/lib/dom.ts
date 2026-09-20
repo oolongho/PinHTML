@@ -88,6 +88,27 @@ export function isVisible(el: Element): boolean {
   return !(rect.width === 0 && rect.height === 0);
 }
 
+/**
+ * 由文档 URL 求「页面键」（锚点归属判定用，spec R7/R13）：
+ * - 真实 URL 文档（URL 模式 / 导出产物）：pathname + search —— 不含 origin，换端口/换域名仍成立；
+ *   hash 是同文档内路由（如原型自身的分页），不参与；
+ * - about: 文档（srcdoc 文件模式）与空 URL：null —— 单文档，不做分页归属判定。
+ */
+export function pageKeyFromHref(href: string): string | null {
+  if (!href || href.startsWith('about:')) return null;
+  try {
+    const url = new URL(href);
+    return url.pathname + url.search;
+  } catch {
+    return null;
+  }
+}
+
+/** 当前文档的页面键（null = srcdoc 单文档，不参与归属判定） */
+export function docPageKey(doc: Document | null | undefined): string | null {
+  return pageKeyFromHref(doc?.URL ?? '');
+}
+
 /** 比较两元素在文档中的顺序（-1 / 0 / 1）；任一方为 null（失联）时排到末尾 */
 function compareDocOrder(a: Element | null, b: Element | null): number {
   if (a === b) return 0;

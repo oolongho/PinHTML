@@ -2,7 +2,14 @@
  * dom.test.ts —— 编号与排序单测（spec R4：图钉序号 = 卡片刻号，固定编号允许跳号）
  */
 import { describe, expect, it } from 'vitest';
-import { getSnippet, isVisible, numberAnnotations, orderAnnotations } from './dom';
+import {
+  docPageKey,
+  getSnippet,
+  isVisible,
+  numberAnnotations,
+  orderAnnotations,
+  pageKeyFromHref,
+} from './dom';
 import type { Annotation } from './types';
 
 function makeAnno(id: string, anchorId: string, createdAt = '2026-01-01T00:00:00Z'): Annotation {
@@ -23,6 +30,28 @@ const doc = new DOMParser().parseFromString(
   '<body><div data-anno-id="e-1">甲</div><div data-anno-id="e-2">乙</div><span data-anno-id="e-3">丙</span></body>',
   'text/html',
 );
+
+describe('pageKeyFromHref（锚点页面归属，R13）', () => {
+  it('真实 URL：取 pathname + search（不含 origin，换端口仍成立）', () => {
+    expect(pageKeyFromHref('http://localhost:8000/dir/p1.html?v=2')).toBe('/dir/p1.html?v=2');
+    expect(pageKeyFromHref('http://127.0.0.1:9000/dir/p1.html?v=2')).toBe('/dir/p1.html?v=2');
+  });
+
+  it('hash 是同文档内路由，不参与页面键', () => {
+    expect(pageKeyFromHref('http://localhost:8000/p1.html#colors')).toBe('/p1.html');
+  });
+
+  it('about: 文档（srcdoc 文件模式）与空 URL 返回 null（单文档不做分页归属）', () => {
+    expect(pageKeyFromHref('about:srcdoc')).toBeNull();
+    expect(pageKeyFromHref('about:blank')).toBeNull();
+    expect(pageKeyFromHref('')).toBeNull();
+  });
+
+  it('docPageKey 对空文档安全', () => {
+    expect(docPageKey(null)).toBeNull();
+    expect(docPageKey(undefined)).toBeNull();
+  });
+});
 
 describe('numberAnnotations', () => {
   it('序号按原型文档顺序分配，与传入数组顺序无关', () => {
