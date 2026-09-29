@@ -99,5 +99,3 @@ src/
 ├── viewer/          零 React 依赖的渲染核心：pin / svg / cards / sidebar / mount / bootstrap / geom / style
 └── bridge.js        注入 iframe 的原型侧脚本：事件拦截、拾取高亮、层级键、结构观察、导航守卫
 ```
-
-更细的设计与验收口径见仓库根目录的 `原型标注工具-开发方案.md` 与 `.trae/specs/build-pinhtml-tool/`（spec / tasks / checklist）。
