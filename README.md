@@ -47,7 +47,7 @@ python3 -m http.server 8000
 
 ```bash
 npm install
-npm run dev        # 本地开发（HMR）
+npm run dev        # 本地开发
 npm run check      # 质量门：typecheck → lint → 单测 → 构建
 npm run build      # 产出单文件 dist/PinHTML.html
 ```
