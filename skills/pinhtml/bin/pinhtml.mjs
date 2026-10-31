@@ -4891,6 +4891,7 @@ function warn(...args) {
 // src/cli/quality.ts
 var DEFAULT_MAX_ITEMS = 15;
 var BODY_SUGGESTED_LIMIT = 200;
+var NUMERIC_UNIT_RE = /\d+(?:\.\d+)?(?:px|pt|rem|em)\b/;
 function emptyByColor() {
   return { interaction: 0, visual: 0, question: 0, note: 0 };
 }
@@ -4934,24 +4935,41 @@ function reviewDraft(project, draftEntries = [], opts = {}) {
         message: `\u6807\u6CE8 ${annotation.id} \u6807\u9898\u4E3A\u7A7A`
       });
     }
+    const numericMatch = NUMERIC_UNIT_RE.exec(`${annotation.title}
+${annotation.body}`);
+    if (numericMatch) {
+      warnings.push({
+        ...index !== void 0 ? { index } : {},
+        code: "PROTO_NUMERIC_VALUE",
+        message: `\u6807\u6CE8 ${annotation.id} \u5F15\u7528\u4E86\u5E03\u5C40\u6570\u503C ${numericMatch[0]}\uFF1A\u539F\u578B\u5C3A\u5BF8/\u95F4\u8DDD\u662F\u793A\u610F\uFF0C\u4E0D\u80FD\u5F53\u4E8B\u5B9E\uFF1B\u53EA\u6709 PRD \u660E\u5199\u8BE5\u503C\u65F6\u624D\u53EF\u5F15\u7528`
+      });
+    }
   }
-  const seenAnchor = /* @__PURE__ */ new Set();
+  const seenAnchorTitle = /* @__PURE__ */ new Set();
   for (const annotation of annotations) {
-    if (!seenAnchor.has(annotation.anchorId)) {
-      seenAnchor.add(annotation.anchorId);
+    const key = `${annotation.anchorId}\0${annotation.title.trim()}`;
+    if (!seenAnchorTitle.has(key)) {
+      seenAnchorTitle.add(key);
       continue;
     }
     const index = indexOf.get(annotation.id);
     warnings.push({
       ...index !== void 0 ? { index } : {},
       code: "DUPLICATE_ANCHOR",
-      message: `\u951A\u70B9 ${annotation.anchorId} \u4E0A\u6709\u591A\u6761\u6807\u6CE8\uFF08\u542B ${annotation.id}\uFF09\uFF1A\u5408\u5E76\u6216\u786E\u8BA4\u662F\u5426\u5404\u5199\u4E00\u6761`
+      message: `\u951A\u70B9 ${annotation.anchorId} \u4E0A\u6709\u6807\u9898\u91CD\u590D\u7684\u6807\u6CE8\uFF08\u542B ${annotation.id}\uFF09\uFF1A\u53EF\u80FD\u662F\u91CD\u8DD1\u8349\u7A3F\u4EA7\u751F\u7684\u91CD\u590D\uFF0C\u7528 update \u6216\u5E26\u4E0A id \u4FEE\u6B63`
     });
   }
   if (annotations.length > 0 && annotations.every((annotation) => annotation.color === "note")) {
     warnings.push({
       code: "NO_CATEGORY",
       message: "\u5168\u90E8\u6807\u6CE8\u90FD\u662F note\uFF1A\u786E\u8BA4\u662F\u5426\u6F0F\u4E86\u5206\u7C7B\u5224\u65AD"
+    });
+  }
+  const questionCount = byColor.question;
+  if (questionCount > annotations.length / 3 && questionCount >= 2) {
+    warnings.push({
+      code: "TOO_MANY_QUESTIONS",
+      message: `\u5F85\u5B9A\u95EE\u9898 ${questionCount}/${annotations.length} \u6761\uFF08\u8D85\u8FC7 1/3\uFF09\uFF1APRD \u6CA1\u5199\u7684\u8BDD\u9898\u4E0D\u8981\u6807\u6210\u5F85\u529E\uFF1Bquestion \u53EA\u7528\u4E8E PRD \u81EA\u76F8\u77DB\u76FE\u6216\u4E0E\u539F\u578B\u51B2\u7A81\u5230\u65E0\u6CD5\u5224\u65AD`
     });
   }
   return {

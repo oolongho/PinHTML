@@ -2,11 +2,13 @@
  * quality.ts —— 草稿并入后的可机检质量信号（spec R5 / DC11）
  *
  * 职责：对「合并后的整个 project」做统计与告警——条数、分类分布、正文长度、
- * 同锚点重复、空标题、全部落 note。只判断、不修改任何东西（DC2：warning 不拦截、
+ * 同锚点同标题重复（同锚点多条是允许的写法）、空标题、全部落 note、
+ * 正文引用原型样式数值、待定问题占比过高。
+ * 只判断、不修改任何东西（DC2：warning 不拦截、
  * 不改变退出码）；「该不该标」这类不可机检的判断由 Skill 承载，本文件不做（DC11）。
  *
  * 与 annotate 的分工：本文件不读草稿原文，只接收「草稿序号 → 标注 id」的映射，
- * 用于给 BODY_TOO_LONG / EMPTY_TITLE / DUPLICATE_ANCHOR 附上草稿 index；
+ * 用于给 BODY_TOO_LONG / EMPTY_TITLE / DUPLICATE_ANCHOR / PROTO_NUMERIC_VALUE 附上草稿 index；
  * 统计口径一律是合并后的项目（含本次新增与输入里既有的标注）。
  */
 import type { Category, Project } from '@/lib/types';
@@ -15,7 +17,7 @@ import type { Category, Project } from '@/lib/types';
 export interface QualityWarning {
   /** 草稿 items 下标（0 起）；非本次草稿写入的标注不给出 */
   index?: number;
-  /** 告警码：TOO_MANY_ITEMS / BODY_TOO_LONG / EMPTY_TITLE / DUPLICATE_ANCHOR / NO_CATEGORY */
+  /** 告警码：TOO_MANY_ITEMS / BODY_TOO_LONG / EMPTY_TITLE / DUPLICATE_ANCHOR / NO_CATEGORY / PROTO_NUMERIC_VALUE / TOO_MANY_QUESTIONS */
   code: string;
   /** 人类可读说明（给人复核用，不参与逻辑） */
   message: string;
@@ -47,6 +49,9 @@ export const DEFAULT_MAX_ITEMS = 15;
 
 /** 正文建议长度上限（超过只告警，不拒绝） */
 const BODY_SUGGESTED_LIMIT = 200;
+
+/** 带单位的尺寸数值（px / pt / rem / em）；百分比不是尺寸单位，不命中 */
+const NUMERIC_UNIT_RE = /\d+(?:\.\d+)?(?:px|pt|rem|em)\b/;
 
 /** 四分类初始计数 */
 function emptyByColor(): Record<Category, number> {
@@ -112,20 +117,30 @@ export function reviewDraft(
         message: `标注 ${annotation.id} 标题为空`,
       });
     }
+    // 逐条（同属 ②）：正文/标题引用原型样式数值——尺寸与间距只是示意，不能当事实（同一条只报一次）
+    const numericMatch = NUMERIC_UNIT_RE.exec(`${annotation.title}\n${annotation.body}`);
+    if (numericMatch) {
+      warnings.push({
+        ...(index !== undefined ? { index } : {}),
+        code: 'PROTO_NUMERIC_VALUE',
+        message: `标注 ${annotation.id} 引用了布局数值 ${numericMatch[0]}：原型尺寸/间距是示意，不能当事实；只有 PRD 明写该值时才可引用`,
+      });
+    }
   }
 
-  // ③ 同一锚点挂多条：第二条及以后各给一条（提示合并或确认是否各写一条）
-  const seenAnchor = new Set<string>();
+  // ③ 同一锚点 + 同一标题：视为内容重复（同锚点挂多条本身是允许的写法）
+  const seenAnchorTitle = new Set<string>();
   for (const annotation of annotations) {
-    if (!seenAnchor.has(annotation.anchorId)) {
-      seenAnchor.add(annotation.anchorId);
+    const key = `${annotation.anchorId}\u0000${annotation.title.trim()}`;
+    if (!seenAnchorTitle.has(key)) {
+      seenAnchorTitle.add(key);
       continue;
     }
     const index = indexOf.get(annotation.id);
     warnings.push({
       ...(index !== undefined ? { index } : {}),
       code: 'DUPLICATE_ANCHOR',
-      message: `锚点 ${annotation.anchorId} 上有多条标注（含 ${annotation.id}）：合并或确认是否各写一条`,
+      message: `锚点 ${annotation.anchorId} 上有标题重复的标注（含 ${annotation.id}）：可能是重跑草稿产生的重复，用 update 或带上 id 修正`,
     });
   }
 
@@ -134,6 +149,15 @@ export function reviewDraft(
     warnings.push({
       code: 'NO_CATEGORY',
       message: '全部标注都是 note：确认是否漏了分类判断',
+    });
+  }
+
+  // ⑤ 待定问题占比过高：PRD 没写的话题不该标成待办（聚合级，不带 index）
+  const questionCount = byColor.question;
+  if (questionCount > annotations.length / 3 && questionCount >= 2) {
+    warnings.push({
+      code: 'TOO_MANY_QUESTIONS',
+      message: `待定问题 ${questionCount}/${annotations.length} 条（超过 1/3）：PRD 没写的话题不要标成待办；question 只用于 PRD 自相矛盾或与原型冲突到无法判断`,
     });
   }
 

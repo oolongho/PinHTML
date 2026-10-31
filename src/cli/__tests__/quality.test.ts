@@ -88,18 +88,36 @@ describe('五个 warning code', () => {
     ]);
   });
 
-  it('DUPLICATE_ANCHOR：同一锚点第二条及以后各一条，带草稿 index', () => {
+  it('DUPLICATE_ANCHOR：同一锚点但标题不同 → 不报（同锚点多条是允许用法）', () => {
     const project = makeProject([
       makeAnnotation('a-1', 'e-1'),
       makeAnnotation('a-2', 'e-1'),
       makeAnnotation('a-3', 'e-1'),
     ]);
+    expect(reviewDraft(project).warnings.map((w) => w.code)).not.toContain('DUPLICATE_ANCHOR');
+  });
+
+  it('DUPLICATE_ANCHOR：同一锚点同标题 → 报 1 条，带草稿 index', () => {
+    const project = makeProject([
+      makeAnnotation('a-1', 'e-1', { title: '按钮不可点击' }),
+      makeAnnotation('a-2', 'e-1', { title: '按钮不可点击' }),
+    ]);
     const warnings = reviewDraft(project, [
       { index: 0, annotationId: 'a-1' },
       { index: 1, annotationId: 'a-2' },
-      { index: 2, annotationId: 'a-3' },
     ]).warnings.filter((w) => w.code === 'DUPLICATE_ANCHOR');
-    expect(warnings.map((w) => w.index)).toEqual([1, 2]);
+    expect(warnings).toEqual([expect.objectContaining({ index: 1, code: 'DUPLICATE_ANCHOR' })]);
+  });
+
+  it('DUPLICATE_ANCHOR：同锚点三条里两条同标题 → 报 1 条（指向第二条）', () => {
+    const project = makeProject([
+      makeAnnotation('a-1', 'e-1', { title: '按钮不可点击' }),
+      makeAnnotation('a-2', 'e-1', { title: '按钮不可点击' }),
+      makeAnnotation('a-3', 'e-1', { title: '按钮缺少禁用态' }),
+    ]);
+    const warnings = reviewDraft(project).warnings.filter((w) => w.code === 'DUPLICATE_ANCHOR');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].message).toContain('a-2');
   });
 
   it('NO_CATEGORY：全部是 note 才告警（含非 note 时不告警）', () => {
@@ -114,5 +132,75 @@ describe('五个 warning code', () => {
       makeAnnotation('a-2', 'e-2', { color: 'question' }),
     ]);
     expect(reviewDraft(mixed).warnings.map((w) => w.code)).not.toContain('NO_CATEGORY');
+  });
+});
+
+describe('PROTO_NUMERIC_VALUE：引用原型样式数值', () => {
+  it('title 含 20px、body 含 1.5rem 命中；100% / §3.2 / v0.9 不命中', () => {
+    const titled = makeProject([makeAnnotation('a-1', 'e-1', { title: '按钮高 20px' })]);
+    expect(reviewDraft(titled).warnings.map((w) => w.code)).toContain('PROTO_NUMERIC_VALUE');
+
+    const bodied = makeProject([makeAnnotation('a-1', 'e-1', { body: '间距 1.5rem' })]);
+    expect(reviewDraft(bodied).warnings.map((w) => w.code)).toContain('PROTO_NUMERIC_VALUE');
+
+    const ignored = makeProject([
+      makeAnnotation('a-1', 'e-1', { body: '占据 100% 宽度' }),
+      makeAnnotation('a-2', 'e-2', { body: '见 §3.2' }),
+      makeAnnotation('a-3', 'e-3', { body: 'v0.9 版本' }),
+    ]);
+    expect(reviewDraft(ignored).warnings).toEqual([]);
+  });
+
+  it('top/right:-8px 与 min(840px, 100% - 32px) 命中', () => {
+    const project = makeProject([
+      makeAnnotation('a-1', 'e-1', { body: 'top/right:-8px' }),
+      makeAnnotation('a-2', 'e-2', { body: '宽度 min(840px, 100% - 32px)' }),
+    ]);
+    expect(
+      reviewDraft(project).warnings.filter((w) => w.code === 'PROTO_NUMERIC_VALUE').map((w) => w.index),
+    ).toEqual([undefined, undefined]);
+  });
+
+  it('同一条 title 和 body 都含数值只报 1 条，带草稿 index', () => {
+    const project = makeProject([
+      makeAnnotation('a-1', 'e-1', { title: '高 20px', body: '间距 1.5rem' }),
+    ]);
+    const warnings = reviewDraft(project, [{ index: 3, annotationId: 'a-1' }]).warnings.filter(
+      (w) => w.code === 'PROTO_NUMERIC_VALUE',
+    );
+    expect(warnings).toEqual([expect.objectContaining({ index: 3, code: 'PROTO_NUMERIC_VALUE' })]);
+    expect(warnings[0].message).toContain('20px');
+  });
+});
+
+describe('TOO_MANY_QUESTIONS：待定问题占比过高', () => {
+  it('4 条里 2 条 question 命中（2 > 4/3 且 >= 2）', () => {
+    const project = makeProject([
+      makeAnnotation('a-1', 'e-1', { color: 'question' }),
+      makeAnnotation('a-2', 'e-2', { color: 'question' }),
+      makeAnnotation('a-3', 'e-3', { color: 'interaction' }),
+      makeAnnotation('a-4', 'e-4', { color: 'visual' }),
+    ]);
+    const warnings = reviewDraft(project).warnings.filter((w) => w.code === 'TOO_MANY_QUESTIONS');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].index).toBeUndefined();
+  });
+
+  it('6 条里 2 条 question 不命中（2 不大于 2）', () => {
+    const project = makeProject([
+      makeAnnotation('a-1', 'e-1', { color: 'question' }),
+      makeAnnotation('a-2', 'e-2', { color: 'question' }),
+      ...Array.from({ length: 4 }, (_, i) => makeAnnotation(`a-${i + 3}`, `e-${i + 3}`)),
+    ]);
+    expect(reviewDraft(project).warnings.map((w) => w.code)).not.toContain('TOO_MANY_QUESTIONS');
+  });
+
+  it('1 条 question 单项不命中（< 2）；空项目不崩、不报', () => {
+    const single = makeProject([makeAnnotation('a-1', 'e-1', { color: 'question' })]);
+    expect(reviewDraft(single).warnings.map((w) => w.code)).not.toContain('TOO_MANY_QUESTIONS');
+
+    const empty = reviewDraft(makeProject([]));
+    expect(empty.items).toBe(0);
+    expect(empty.warnings).toEqual([]);
   });
 });
