@@ -5,6 +5,8 @@
  * data-anno-id，回放不到的锚点保留在 JSON 由产物打开时走三态），末个 </body> 前依序注入
  * #pinhtml-style / #pinhtml-data / #pinhtml-runtime 三件，下载「<原型名>-标注.html」
  * （零外链零 CDN，双击即用）。
+ * 另有 buildAnnotatedHtml：只回写 data-anno-id + 注入 #pinhtml-data 的干净带锚版
+ * （无 style / runtime，供 CLI `annotate --clean` 交给下游改原型）。
  */
 import { STYLE_TEXT } from '@/viewer/style';
 import viewerSource from 'virtual:viewer-src';
@@ -50,6 +52,20 @@ export function buildExportHtml(cleanSource: string, project: Project): string {
   const bodyIndex = source.lastIndexOf('</body>');
   if (bodyIndex < 0) return source + injection;
   return source.slice(0, bodyIndex) + injection + source.slice(bodyIndex);
+}
+
+/**
+ * 组装「干净带锚版」HTML（CLI `annotate --clean` / `export --kind clean`）：
+ * 干净源 + 回写 data-anno-id + 只注入 #pinhtml-data，**不含** style / runtime。
+ * 用途：交给下游 agent 改原型时不带运行时噪音；拖回工具仍可按内嵌项目恢复标注。
+ */
+export function buildAnnotatedHtml(cleanSource: string, project: Project): string {
+  const source = injectAnchorIds(cleanSource, project);
+  const data = `<script id="pinhtml-data" type="application/json">${serializeProject(project)}</` + 'script>';
+
+  const bodyIndex = source.lastIndexOf('</body>');
+  if (bodyIndex < 0) return source + data;
+  return source.slice(0, bodyIndex) + data + source.slice(bodyIndex);
 }
 
 /** 触发浏览器下载（file:// 下 Blob + a[download] 通用，spec 方案 §2） */

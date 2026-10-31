@@ -11,8 +11,13 @@
  */
 import { create } from 'zustand';
 import { buildSelector, docPageKey, getSnippet } from './dom';
+import {
+  addAnnotation as addAnnotationOp,
+  removeAnnotation as removeAnnotationOp,
+  updateAnnotation as updateAnnotationOp,
+} from './project-ops';
 import { DEFAULT_FILTERS } from './types';
-import type { Anchor, Annotation, Category, Filters, Mode, Project } from './types';
+import type { Annotation, Category, Filters, Mode, Project } from './types';
 
 /** 编辑上下文：编辑器打开期间的状态（可持有 iframe 内 DOM Element 引用，不参与持久化） */
 export interface EditingState {
@@ -90,6 +95,8 @@ export interface PinHTMLState {
   cancelEdit: () => void;
   /**
    * 提交标注（新建/复用锚点 + 新建/更新标注），完成后清空 editing 并置 dirty。
+   * 数据语义（锚点复用、e-N / a-N 分配、时间戳）由 project-ops 唯一实现（DC4），
+   * 本 action 只负责 data-anno-id 属性同步与 state / dirty 副作用。
    * - editing.anchorId 为空：用 anchorSeq+1 分配 e-N，给 element 写 data-anno-id，
    *   anchors 追加（selector/snippet 由 dom.ts 生成，createdAt ISO 8601）；
    *   元素已有 data-anno-id 时复用该锚点（同一元素追加标注）。
@@ -218,112 +225,78 @@ export const usePinHTMLStore = create<PinHTMLState>((set, get) => ({
   commitAnnotation: (input) => {
     const { project, editing } = get();
     if (!project || !editing) return null;
-    const now = new Date().toISOString();
-    let anchorId = editing.anchorId;
-    let { anchors, annotations, anchorSeq, annoSeq } = project;
+    // 编辑既有标注却找不到该 id：数据不一致，不产生任何变更（与旧实现一致）
+    if (editing.annotationId && !project.annotations.some((a) => a.id === editing.annotationId)) {
+      return null;
+    }
+
+    const el = editing.element;
+    const anchorId = editing.anchorId;
+    let selector = '';
+    let snippet = '';
+    let docPath: string | null = null;
 
     if (anchorId) {
-      // 已有锚点：若编辑期间「上移一层」改绑了元素（data-anno-id 不一致），同步锚点证据与 DOM 属性
-      const el = editing.element;
+      const existing = project.anchors.find((a) => a.id === anchorId);
+      if (!existing) return null;
       if (el && el.getAttribute('data-anno-id') !== anchorId) {
-        if (!anchors.some((a) => a.id === anchorId)) return null;
-        // 从历史栈定位原锚点元素并移除属性
+        // 编辑期间「上移一层」改绑了元素（data-anno-id 不一致）：摘旧属性、写新属性，
+        // 证据取新元素（随后由 project-ops 写入锚点）
         for (const prev of editing.pickHistory) {
           if (prev.getAttribute('data-anno-id') === anchorId) prev.removeAttribute('data-anno-id');
         }
         el.setAttribute('data-anno-id', anchorId);
-        anchors = anchors.map((a) =>
-          a.id === anchorId ? { ...a, selector: buildSelector(el), snippet: getSnippet(el) } : a,
-        );
+        selector = buildSelector(el);
+        snippet = getSnippet(el);
+      } else {
+        // 复用既有锚点：沿用其既有证据，不因元素文本变化静默改写
+        selector = existing.selector;
+        snippet = existing.snippet;
       }
     } else {
       // 新建锚点：依赖当前拾取的元素
-      const el = editing.element;
       if (!el) return null;
-      const existingId = el.getAttribute('data-anno-id');
-      const existing = existingId ? anchors.find((a) => a.id === existingId) : undefined;
-      if (existingId && existing) {
-        // 元素已有锚点：复用（同一元素追加标注，R2 Scenario）
-        anchorId = existingId;
-      } else {
-        // 兜底：data-anno-id 缺失（原型 DOM 重渲染导致属性丢失等）时，按 selector + snippet
-        // 双证据匹配既有锚点，避免同一元素被重复分配锚点、导致图钉计数不累加
-        const selector = buildSelector(el);
-        const snippet = getSnippet(el);
-        const byEvidence = anchors.find((a) => a.selector === selector && a.snippet === snippet);
-        if (byEvidence) {
-          anchorId = byEvidence.id;
-        } else {
-          anchorSeq += 1;
-          anchorId = `e-${anchorSeq}`;
-          // 页面归属：URL 模式（真实文档 URL）下记录当前页路径；srcdoc 单文档不记录（R13）
-          const pageKey = docPageKey(el.ownerDocument);
-          const anchor: Anchor = {
-            id: anchorId,
-            selector,
-            snippet,
-            ...(pageKey ? { docPath: pageKey } : {}),
-            createdAt: now,
-          };
-          anchors = [...anchors, anchor];
-        }
-        el.setAttribute('data-anno-id', anchorId);
-      }
+      selector = buildSelector(el);
+      snippet = getSnippet(el);
+      // 页面归属：URL 模式（真实文档 URL）下记录当前页路径；srcdoc 单文档不记录（R13）
+      docPath = docPageKey(el.ownerDocument);
     }
 
-    // 标注：annotationId 为空 → 新建；否则更新
-    let annotation: Annotation;
-    if (!editing.annotationId) {
-      annoSeq += 1;
-      annotation = {
-        id: `a-${annoSeq}`,
-        anchorId,
-        title: input.title,
-        body: input.body,
-        color: input.color,
-        status: 'open',
-        createdAt: now,
-        updatedAt: now,
-      };
-      annotations = [...annotations, annotation];
-    } else {
-      const target = annotations.find((a) => a.id === editing.annotationId);
-      if (!target) return null;
-      annotation = {
-        ...target,
-        anchorId,
-        title: input.title,
-        body: input.body,
-        color: input.color,
-        updatedAt: now,
-      };
-      annotations = annotations.map((a) => (a.id === annotation.id ? annotation : a));
-    }
+    // 数据语义（锚点复用 / id 分配 / 时间戳）统一委派 project-ops（DC4，唯一语义来源）
+    const result = addAnnotationOp(project, {
+      selector,
+      snippet,
+      title: input.title,
+      body: input.body,
+      color: input.color,
+      ...(anchorId ? { anchorId } : {}),
+      ...(docPath ? { docPath } : {}),
+      ...(editing.annotationId ? { id: editing.annotationId } : {}),
+    });
 
-    set({ project: { ...project, anchors, annotations, anchorSeq, annoSeq }, editing: null, dirty: true });
-    return { anchorId, annotation };
+    if (el) el.setAttribute('data-anno-id', result.anchorId);
+    set({ project: result.project, editing: null, dirty: true });
+
+    const annotation = result.project.annotations.find((a) => a.id === result.annotationId);
+    if (!annotation) return null;
+    return { anchorId: result.anchorId, annotation };
   },
 
   updateAnnotation: (id, patch) => {
     const { project } = get();
     if (!project) return;
-    const now = new Date().toISOString();
-    let found = false;
-    const annotations = project.annotations.map((a) => {
-      if (a.id !== id) return a;
-      found = true;
-      return { ...a, ...patch, updatedAt: now };
-    });
-    if (!found) return;
-    set({ project: { ...project, annotations }, dirty: true });
+    // 数据变更委派 project-ops；id 不存在时其原样返回 → 不置 dirty（与旧行为一致）
+    const next = updateAnnotationOp(project, id, patch);
+    if (next === project) return;
+    set({ project: next, dirty: true });
   },
 
   removeAnnotation: (id) => {
     const { project } = get();
     if (!project) return;
-    const annotations = project.annotations.filter((a) => a.id !== id);
-    // anchors 保留不动：无标注的锚点 pin 计数为 0 自然隐藏
-    set({ project: { ...project, annotations }, dirty: true });
+    // anchors 保留不动：无标注的锚点 pin 计数为 0 自然隐藏（project-ops 默认语义）
+    const { project: next } = removeAnnotationOp(project, id);
+    set({ project: next, dirty: true });
   },
 
   toggleStatus: (id) => {

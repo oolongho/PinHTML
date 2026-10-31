@@ -1,9 +1,9 @@
-import { build as esbuild } from 'esbuild'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig, type Plugin } from 'vite'
 import { viteSingleFile } from 'vite-plugin-singlefile'
+import { bundleViewerSource } from './build/viewer-source.mjs'
 
 // PinHTML 构建配置（spec R12 / D5）：
 // - dev：常规 Vite 开发服务器（HMR）
@@ -17,7 +17,6 @@ import { viteSingleFile } from 'vite-plugin-singlefile'
  * 工具侧照常 `import '@/viewer'` 走 Vite 的正常依赖图。
  */
 function viewerSourcePlugin(): Plugin {
-  const entry = fileURLToPath(new URL('./src/viewer/index.ts', import.meta.url))
   return {
     name: 'pinhtml:viewer-source',
     resolveId(id) {
@@ -26,19 +25,8 @@ function viewerSourcePlugin(): Plugin {
     },
     async load(id) {
       if (id !== '\0virtual:viewer-src') return null
-      const result = await esbuild({
-        entryPoints: [entry],
-        bundle: true,
-        write: false,
-        format: 'iife',
-        platform: 'browser',
-        target: 'es2019',
-        minify: false,
-        logLevel: 'silent',
-      })
-      const code = result.outputFiles[0].text
       // 产物文本作为字符串默认导出，供 exporter.ts 读取注入导出 HTML
-      return `export default ${JSON.stringify(code)};`
+      return `export default ${JSON.stringify(await bundleViewerSource())};`
     },
   }
 }

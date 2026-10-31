@@ -10,14 +10,15 @@
 const EXPORT_SUFFIX = '-标注';
 
 /**
- * 归一原型名：保留扩展名，剥离尾部**累积**的一个或多个「-标注」后缀。
- * 例：`X-标注-标注.html` → `X.html`；`需求-标注.html` → `需求.html`
+ * 归一原型名：保留扩展名，剥离尾部**累积**的一个或多个「-标注」/`.annotated` 后缀。
+ * 例：`X-标注-标注.html` → `X.html`；`X.annotated.html` → `X.html`；
+ * `X.annotated-标注.html` → `X.html`（`--clean` 版重新导入再导出不会累积后缀）
  */
 export function normalizeProtoName(protoName: string): string {
   const matched = /^(.*?)(\.html?|\.anno\.json)$/i.exec(protoName.trim());
   const stem = matched ? matched[1] : protoName.trim();
   const ext = matched ? matched[2] : '';
-  const cleaned = stem.replace(/(?:-标注)+$/g, '').trim();
+  const cleaned = stem.replace(/(?:-标注|\.annotated)+$/g, '').trim();
   return (cleaned || '原型') + ext;
 }
 
@@ -34,4 +35,12 @@ export function exportHtmlName(protoName: string): string {
 /** 保存 JSON 的下载文件名：`<原型名主干>.anno.json` */
 export function annoJsonName(protoName: string): string {
   return `${protoStem(protoName)}.anno.json`;
+}
+
+/**
+ * 无运行时的干净带锚版文件名：`<原型名主干>.annotated.html`（CLI `annotate --clean`）。
+ * 与 `exportHtmlName` 的 `-标注.html` 区分：后者含 viewer，双击即看；前者给下游 agent 改原型用。
+ */
+export function cleanHtmlName(protoName: string): string {
+  return `${protoStem(protoName)}.annotated.html`;
 }

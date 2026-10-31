@@ -42,6 +42,11 @@ export interface Annotation {
   title: string;
   /** 正文（≤2000 字，支持换行） */
   body: string;
+  /**
+   * 人工追溯标签（如 `PRD §3.2`），仅用于阅读来处，不参与任何逻辑。
+   * 可选：老 JSON 没有该字段照常可用（向后兼容）。
+   */
+  source?: string;
   /** 分类（四选一，默认 interaction） */
   color: Category;
   /** 状态：open 待确认 / resolved 已确认 */

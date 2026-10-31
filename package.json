@@ -3,13 +3,19 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "bin": {
+    "pinhtml": "./bin/pinhtml.mjs"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build && mv dist/index.html dist/PinHTML.html",
-    "typecheck": "tsc -b",
+    "build:cli": "node scripts/build-cli.mjs",
+    "build:skill": "node scripts/build-cli.mjs --standalone",
+    "typecheck": "tsc -b && tsc -p tsconfig.cli.json --noEmit",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "lint": "oxlint",
-    "check": "npm run typecheck && npm run lint && npm run test && npm run build",
+    "check": "npm run typecheck && npm run lint && npm run test && npm run build && npm run build:cli && npm run build:skill",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -17,6 +23,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cn": "^0.2.6",
+    "happy-dom": "^20.14.3",
     "lucide-react": "^1.43.0",
     "next-themes": "^0.4.6",
     "radix-ui": "^1.6.7",
@@ -29,11 +36,11 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^5.2.0",
-    "happy-dom": "^20.14.3",
     "oxlint": "^1.79.0",
     "typescript": "~6.0.2",
     "vite": "^7.3.6",

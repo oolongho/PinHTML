@@ -1,0 +1,22 @@
+# 最小 CI：先跑 typecheck / 单测 / 构建（含 build:cli），再跑 Playwright 回归。
+# 注意：bin/ 被 .gitignore 忽略，CI 里由 `npm run check` 中的 build:cli 生成，
+# 因此 test:e2e 必须排在 check 之后。
+name: E2E
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
